@@ -1,0 +1,28 @@
+// This source file is part of the Gyro project.
+//
+// Licensed under the Apache License v2.0
+
+// Generated from version.h.in -- do not edit the generated copy.
+
+#ifndef GYRO_VERSION_H_
+#define GYRO_VERSION_H_
+
+#include <gyro/export.h>
+
+#define GYRO_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define GYRO_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define GYRO_VERSION_PATCH @PROJECT_VERSION_PATCH@
+#define GYRO_VERSION_STRING "@PROJECT_VERSION@"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/// Returns the library version as a "major.minor.patch".
+GYRO_API const char *gyro_version(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // !GYRO_VERSION_H_
