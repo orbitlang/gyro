@@ -20,7 +20,8 @@ endif ()
 include(GoogleTest)
 
 set(GYRO_TEST_SOURCES
-        gyro_test.cpp)
+        gyro_test.cpp
+        support/minheap_test.cpp)
 
 add_executable(gyro_tests ${GYRO_TEST_SOURCES})
 
@@ -28,6 +29,9 @@ add_executable(gyro_tests ${GYRO_TEST_SOURCES})
 target_link_libraries(gyro_tests PRIVATE gyro::gyro GTest::gmock GTest::gtest_main)
 
 target_compile_features(gyro_tests PRIVATE cxx_std_17)
+
+# Internal support headers are not part of the public API, but they are tested.
+target_include_directories(gyro_tests PRIVATE ${PROJECT_SOURCE_DIR}/gyro/src)
 
 if (MSVC)
     target_compile_options(gyro_tests PRIVATE /W4)
