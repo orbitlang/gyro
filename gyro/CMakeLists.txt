@@ -2,9 +2,12 @@ include(GenerateExportHeader)
 include(GNUInstallDirs)
 
 set(GYRO_PUBLIC_HEADERS
-        include/gyro/gyro.h)
+        include/gyro/allocator.h
+        include/gyro/gyro.h
+        include/gyro/loop.h)
 
 set(GYRO_SOURCES
+        src/allocator.cpp
         src/gyro.cpp)
 
 if (GYRO_BUILD_SHARED)
