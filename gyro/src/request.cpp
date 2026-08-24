@@ -2,14 +2,13 @@
 //
 // Licensed under the Apache License v2.0
 
-#ifndef GYRO_GYRO_H_
-#define GYRO_GYRO_H_
-
-#include <gyro/allocator.h>
 #include <gyro/error.h>
-#include <gyro/handle.h>
 #include <gyro/loop.h>
 #include <gyro/request.h>
-#include <gyro/version.h>
 
-#endif // !GYRO_GYRO_H_
+extern "C" {
+int gyro_request_cancel(gyro_t *gyro, gyro_request_t token) {
+    // TODO: impl this
+    return GYRO_COMPLETED;
+}
+} // extern "C"
