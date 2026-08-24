@@ -4,10 +4,12 @@ include(GNUInstallDirs)
 set(GYRO_PUBLIC_HEADERS
         include/gyro/allocator.h
         include/gyro/gyro.h
+        include/gyro/handle.h
         include/gyro/loop.h)
 
 set(GYRO_SOURCES
         src/allocator.cpp
+        src/handle.cpp
         src/gyro.cpp)
 
 if (GYRO_BUILD_SHARED)

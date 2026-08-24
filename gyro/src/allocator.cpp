@@ -7,7 +7,7 @@
 #include <gyro/allocator.h>
 
 extern "C" {
-static void *DefaultAlloc(size_t size, void *ctx) {
+static void *DefaultAlloc(const size_t size, void *ctx) {
     (void) ctx;
 
     return std::malloc(size);
