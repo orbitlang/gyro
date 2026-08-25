@@ -9,16 +9,21 @@
 
 namespace gyro {
     struct Request {
+        uint64_t generation;
+        uint32_t index;
+        uint32_t next_free;
     };
 
     struct RequestIndex {
-        union {
-            uint64_t _opaque;
+        struct Fields {
+            uint64_t generation: 40;
+            uint64_t index: 24;
+        };
 
-            struct {
-                uint64_t generation: 40;
-                uint64_t index: 24;
-            } fields;
+        union {
+            Fields fields;
+
+            uint64_t _opaque;
         };
     };
 }

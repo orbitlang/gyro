@@ -2,12 +2,17 @@
 //
 // Licensed under the Apache License v2.0
 
-#include <cstring>
-
 #include <gyro/gyro.h>
 
+#include "support/reqstore.h"
+
 struct Gyro {
-    gyro_allocator_t allocator;
+    const gyro_allocator_t allocator;
+
+    gyro::support::RequestStore requests;
+
+    explicit Gyro(const gyro_allocator_t *allocator) : allocator(*allocator), requests(&this->allocator) {
+    }
 };
 
 extern "C" {
@@ -17,9 +22,7 @@ gyro_t *gyro_new(const gyro_allocator_t *allocator) {
 
     auto *gyro = (Gyro *) allocator->alloc(sizeof(Gyro), allocator->ctx);
     if (gyro != nullptr) {
-        memset(gyro, 0, sizeof(Gyro));
-
-        gyro->allocator = *allocator;
+        new(gyro) Gyro(allocator);
     }
 
     return gyro;
@@ -29,7 +32,11 @@ void gyro_free(gyro_t *gyro) {
     if (gyro == nullptr)
         return;
 
-    gyro->allocator.free(gyro, gyro->allocator.ctx);
+    const auto allocator = gyro->allocator;
+
+    gyro->~Gyro();
+
+    allocator.free(gyro, allocator.ctx);
 }
 
 const char *gyro_version(void) {
