@@ -12,6 +12,18 @@ namespace gyro {
         uint64_t generation;
         uint32_t index;
         uint32_t next_free;
+
+        struct {
+            Request *parent;
+
+            Request *left;
+            Request *right;
+        } heap;
+
+        struct {
+            long long id;
+            long long timeout;
+        } timer;
     };
 
     struct RequestIndex {
