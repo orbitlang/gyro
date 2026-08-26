@@ -4,28 +4,14 @@
 
 #include <chrono>
 
-#include <gyro/gyro.h>
+#include <gyro/version.h>
 
-#include "support/reqstore.h"
-#include "request_minheap.h"
+#include "gyro_internal.h"
 
 using namespace gyro;
 
 // TODO: temporary, remove once the backend can block
 constexpr unsigned int kLoopTimeoutMs = 24;
-
-struct Gyro {
-    const gyro_allocator_t allocator;
-
-    ReqHeap r_mheap;
-
-    support::RequestStore requests;
-
-    bool should_terminate = false;
-
-    explicit Gyro(const gyro_allocator_t *allocator) : allocator(*allocator), requests(&this->allocator) {
-    }
-};
 
 static long long TimeNow() {
     const auto now = std::chrono::steady_clock::now();
@@ -59,8 +45,7 @@ static void Loop(Gyro *loop) {
                 timeout = 0;
         }
 
-        // TODO: Per OS IOPoll
-        // IOPoll(loop, timeout)
+        IOPoll(loop, timeout);
     }
 }
 
@@ -74,6 +59,12 @@ gyro_t *gyro_new(const gyro_allocator_t *allocator) {
     auto *gyro = (Gyro *) allocator->alloc(sizeof(Gyro), allocator->ctx);
     if (gyro != nullptr) {
         new(gyro) Gyro(allocator);
+
+        if (!IOInit(gyro)) {
+            gyro_free(gyro);
+
+            return nullptr;
+        }
     }
 
     return gyro;
@@ -84,6 +75,9 @@ void gyro_free(gyro_t *gyro) {
         return;
 
     const auto allocator = gyro->allocator;
+
+    if (gyro->handler != UINTMAX_MAX)
+        IOCleanup(gyro);
 
     gyro->~Gyro();
 

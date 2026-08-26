@@ -14,7 +14,8 @@ set(GYRO_SOURCES
         src/error.cpp
         src/handle.cpp
         src/gyro.cpp
-        src/request.cpp)
+        src/request.cpp
+        src/platform/bsd/iopoll.cpp)
 
 if (GYRO_BUILD_SHARED)
     add_library(gyro SHARED ${GYRO_SOURCES} ${GYRO_PUBLIC_HEADERS})
