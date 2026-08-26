@@ -22,6 +22,7 @@ include(GoogleTest)
 set(GYRO_TEST_SOURCES
         gyro_test.cpp
         support/minheap_test.cpp
+        support/queue_test.cpp
         support/reqstore_test.cpp)
 
 add_executable(gyro_tests ${GYRO_TEST_SOURCES})
