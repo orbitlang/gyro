@@ -3,6 +3,7 @@ include(GNUInstallDirs)
 
 set(GYRO_PUBLIC_HEADERS
         include/gyro/allocator.h
+        include/gyro/buf.h
         include/gyro/error.h
         include/gyro/gyro.h
         include/gyro/handle.h

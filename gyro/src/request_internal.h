@@ -5,15 +5,20 @@
 #ifndef GYRO_REQUEST_INTERNAL_H_
 #define GYRO_REQUEST_INTERNAL_H_
 
+#include <gyro/buf.h>
 #include <gyro/request.h>
 
 struct GyroRequest {
+    gyro_t *loop;
+
     uint64_t generation;
     uint32_t index;
     uint32_t next_free;
 
     gyro_rq_op_cb cb_op;
     gyro_rq_user_cb cb_user;
+
+    void *data;
 
     struct {
         GyroRequest *parent;
@@ -33,6 +38,13 @@ struct GyroRequest {
 
         bool cancel_on_timeout;
     } timer;
+
+    struct {
+        gyro_buf_t *buf;
+        unsigned int nbufs;
+
+        uint64_t transferred;
+    } io;
 
     bool cancelled;
 };

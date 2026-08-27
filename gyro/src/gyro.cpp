@@ -59,7 +59,7 @@ static GyroRequest *RunTimer(Gyro *loop, const long long loop_time) {
             request->cb_op(nullptr, request);
 
         if (request->cb_user != nullptr)
-            request->cb_user(nullptr, 0, 0, nullptr);
+            request->cb_user(nullptr, 0, 0, request->data);
 
         if (remove)
             FinishRequest(loop, request);
@@ -109,7 +109,7 @@ void gyro::ProcessHandle(Gyro *loop, GyroHandle *handle, const HandleDirection d
         }
 
         if (request->cb_user != nullptr)
-            request->cb_user(handle, status, 0, nullptr);
+            request->cb_user(handle, status, request->io.transferred, request->data);
 
         queue->Dequeue();
 
