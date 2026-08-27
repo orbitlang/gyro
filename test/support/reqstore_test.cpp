@@ -9,7 +9,6 @@
 #include <support/reqstore.h>
 
 namespace {
-    using gyro::Request;
     using gyro::RequestIndex;
     using gyro::support::RequestStore;
 
@@ -100,7 +99,7 @@ namespace {
         RequestStore store(&allocator.hooks);
 
         RequestIndex token{};
-        Request *req = store.Acquire(token);
+        GyroRequest *req = store.Acquire(token);
 
         ASSERT_NE(nullptr, req);
         EXPECT_NE(0u, token._opaque) << "the all-zero token must stay unreachable";
@@ -113,8 +112,8 @@ namespace {
         RequestIndex first{};
         RequestIndex second{};
 
-        Request *a = store.Acquire(first);
-        Request *b = store.Acquire(second);
+        GyroRequest *a = store.Acquire(first);
+        GyroRequest *b = store.Acquire(second);
 
         ASSERT_NE(nullptr, a);
         ASSERT_NE(nullptr, b);
@@ -128,7 +127,7 @@ namespace {
         RequestStore store(&allocator.hooks);
 
         RequestIndex token{};
-        Request *req = store.Acquire(token);
+        GyroRequest *req = store.Acquire(token);
         ASSERT_NE(nullptr, req);
 
         EXPECT_EQ(req, store.Resolve(token));
@@ -139,7 +138,7 @@ namespace {
         RequestStore store(&allocator.hooks);
 
         RequestIndex token{};
-        Request *req = store.Acquire(token);
+        GyroRequest *req = store.Acquire(token);
         ASSERT_NE(nullptr, req);
 
         store.Release(req);
@@ -178,13 +177,13 @@ namespace {
         RequestStore store(&allocator.hooks);
 
         RequestIndex first{};
-        Request *a = store.Acquire(first);
+        GyroRequest *a = store.Acquire(first);
         ASSERT_NE(nullptr, a);
 
         store.Release(a);
 
         RequestIndex second{};
-        Request *b = store.Acquire(second);
+        GyroRequest *b = store.Acquire(second);
         ASSERT_NE(nullptr, b);
 
         EXPECT_EQ(a, b) << "the freed slot should be handed out again";
@@ -201,11 +200,11 @@ namespace {
         const uint32_t count = kPageSize * 3 + 7;
 
         std::vector<RequestIndex> tokens;
-        std::vector<Request *> requests;
+        std::vector<GyroRequest *> requests;
 
         for (uint32_t i = 0; i < count; i++) {
             RequestIndex token{};
-            Request *req = store.Acquire(token);
+            GyroRequest *req = store.Acquire(token);
 
             ASSERT_NE(nullptr, req) << "at acquisition " << i;
 
@@ -225,12 +224,12 @@ namespace {
         TestAllocator allocator;
         RequestStore store(&allocator.hooks);
 
-        std::vector<std::pair<RequestIndex, Request *> > held;
+        std::vector<std::pair<RequestIndex, GyroRequest *> > held;
 
         for (uint32_t round = 0; round < 4; round++) {
             for (uint32_t i = 0; i < kPageSize + 13; i++) {
                 RequestIndex token{};
-                Request *req = store.Acquire(token);
+                GyroRequest *req = store.Acquire(token);
 
                 ASSERT_NE(nullptr, req);
                 held.emplace_back(token, req);
@@ -247,7 +246,7 @@ namespace {
                     EXPECT_EQ(held[i].second, store.Resolve(held[i].first)) << "round " << round;
             }
 
-            std::vector<std::pair<RequestIndex, Request *> > survivors;
+            std::vector<std::pair<RequestIndex, GyroRequest *> > survivors;
             for (size_t i = 1; i < held.size(); i += 2)
                 survivors.push_back(held[i]);
 

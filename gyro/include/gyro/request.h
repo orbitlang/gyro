@@ -5,15 +5,16 @@
 #ifndef GYRO_REQUEST_H_
 #define GYRO_REQUEST_H_
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include <gyro/export.h>
+#include <gyro/handle.h>
 #include <gyro/loop.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
 /**
  * @brief Names one submitted operation.
  *
@@ -24,6 +25,12 @@ extern "C" {
 typedef struct {
     uint64_t _opaque;
 } gyro_request_t;
+
+typedef struct GyroRequest gyro_op_t;
+
+typedef gyro_cb_status_t (*gyro_rq_op_cb)(gyro_handle_t *handle, gyro_op_t *op);
+
+typedef gyro_cb_status_t (*gyro_rq_user_cb)(gyro_handle_t *handle, int status, size_t transferred, void *data);
 
 /// Returns a token naming no operation.
 static inline gyro_request_t gyro_request_invalid(void) {

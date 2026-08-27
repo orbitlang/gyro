@@ -9,7 +9,7 @@
 #include "request_internal.h"
 
 namespace gyro {
-    inline bool RequestTimeoutLess(const Request *left, const Request *right) {
+    inline bool RequestTimeoutLess(const GyroRequest *left, const GyroRequest *right) {
         if (left->timer.timeout < right->timer.timeout)
             return true;
 
@@ -19,7 +19,7 @@ namespace gyro {
         return false;
     }
 
-    using ReqHeap = support::MinHeap<Request, RequestTimeoutLess>;
+    using ReqHeap = support::MinHeap<GyroRequest, RequestTimeoutLess>;
 }
 
 #endif // !GYRO_REQUEST_MINHEAP_H_

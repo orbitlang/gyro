@@ -8,19 +8,33 @@
 #include <gyro/handle.h>
 #include <gyro/loop.h>
 
-enum class HandleState {
-    ACTIVE,
-    CLOSING
-};
+#include "support/queue.h"
+#include "request_internal.h"
+
+namespace gyro {
+    enum class HandleDirection {
+        IN,
+        OUT
+    };
+
+    enum class HandleState {
+        ACTIVE,
+        CLOSING
+    };
+} // namespace gyro
 
 struct GyroHandle {
-    gyro_close_cb cb_close;
+    gyro::support::Queue<GyroRequest> in;
 
-    gyro_t *gyro;
+    gyro::support::Queue<GyroRequest> out;
 
-    void *data;
+    gyro_t *gyro = nullptr;
 
-    HandleState state;
+    gyro_close_cb cb_close = nullptr;
+
+    void *data = nullptr;
+
+    gyro::HandleState state = gyro::HandleState::ACTIVE;
 };
 
 #endif // !GYRO_HANDLE_INTERNAL_H_

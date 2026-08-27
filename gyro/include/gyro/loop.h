@@ -12,6 +12,13 @@
 extern "C" {
 #endif
 
+typedef enum {
+    GYRO_CB_CONTINUE,
+    GYRO_CB_FAILURE,
+    GYRO_CB_RETRY,
+    GYRO_CB_SUCCESS,
+} gyro_cb_status_t;
+
 /// Opaque event loop.
 typedef struct Gyro gyro_t;
 

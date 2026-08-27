@@ -39,7 +39,7 @@ namespace gyro::support {
         const gyro_allocator_t *allocator_ = nullptr;
 
         /// Page directory. It moves when it grows; the pages it points to do not.
-        Request **pages_ = nullptr;
+        GyroRequest **pages_ = nullptr;
 
         uint32_t ndir_ = 0; ///< Entries the directory can hold.
         uint32_t npages_ = 0; ///< Entries actually in use.
@@ -67,12 +67,12 @@ namespace gyro::support {
             if (this->npages_ == this->ndir_) {
                 const auto wanted = this->ndir_ == 0 ? 8 : this->ndir_ * 2;
 
-                auto **tmp = (Request **) this->allocator_->alloc(wanted * sizeof(Request *), this->allocator_->ctx);
+                auto **tmp = (GyroRequest **) this->allocator_->alloc(wanted * sizeof(GyroRequest *), this->allocator_->ctx);
                 if (tmp == nullptr)
                     return false;
 
                 if (this->pages_ != nullptr) {
-                    memcpy(tmp, this->pages_, this->ndir_ * sizeof(Request *));
+                    memcpy(tmp, this->pages_, this->ndir_ * sizeof(GyroRequest *));
 
                     this->allocator_->free(this->pages_, this->allocator_->ctx);
                 }
@@ -82,7 +82,7 @@ namespace gyro::support {
             }
 
             // Alloc page
-            auto *page = (Request *) this->allocator_->alloc(sizeof(Request) * kPageSize, this->allocator_->ctx);
+            auto *page = (GyroRequest *) this->allocator_->alloc(sizeof(GyroRequest) * kPageSize, this->allocator_->ctx);
             if (page == nullptr)
                 return false;
 
@@ -92,7 +92,7 @@ namespace gyro::support {
 
             // Backwards, so the lowest indices are handed out first.
             for (auto i = kPageSize; i-- > 0;) {
-                auto *req = new(page + i)Request();
+                auto *req = new(page + i)GyroRequest();
 
                 req->generation = 1;
                 req->index = ((this->npages_ - 1) << kPageShift) | i;
@@ -107,7 +107,7 @@ namespace gyro::support {
         /**
          * @brief Returns the request at an index, which must be in range.
          */
-        [[nodiscard]] Request *At(const uint32_t token) const noexcept {
+        [[nodiscard]] GyroRequest *At(const uint32_t token) const noexcept {
             return this->pages_[token >> kPageShift] + (token & kPageMask);
         }
 
@@ -123,7 +123,7 @@ namespace gyro::support {
         ~RequestStore() {
             for (auto i = 0u; i < this->npages_; i++) {
                 for (auto j = 0u; j < kPageSize; j++)
-                    this->pages_[i][j].~Request();
+                    this->pages_[i][j].~GyroRequest();
 
                 this->allocator_->free(this->pages_[i], this->allocator_->ctx);
             }
@@ -139,7 +139,7 @@ namespace gyro::support {
          * @return The request, or nullptr if the ceiling was reached or an
          *         allocation failed.
          */
-        Request *Acquire(RequestIndex &out_token) noexcept {
+        GyroRequest *Acquire(RequestIndex &out_token) noexcept {
             if (this->next_free_ == kNoSlot && !this->Grow())
                 return nullptr;
 
@@ -159,7 +159,7 @@ namespace gyro::support {
          * @return The request, or nullptr if the token is stale, was never
          *         valid, or names a slot this store does not have.
          */
-        [[nodiscard]] Request *Resolve(const RequestIndex index) const noexcept {
+        [[nodiscard]] GyroRequest *Resolve(const RequestIndex index) const noexcept {
             if (index.fields.index >= this->nslots_)
                 return nullptr;
 
@@ -177,7 +177,7 @@ namespace gyro::support {
          * @warning Must be called once per Acquire: releasing twice threads the slot
          * into the free list twice, and the store then hands it to two callers.
          */
-        void Release(Request *request) noexcept {
+        void Release(GyroRequest *request) noexcept {
             request->generation += 1;
             request->next_free = this->next_free_;
 

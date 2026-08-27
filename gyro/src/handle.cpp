@@ -14,11 +14,11 @@ gyro_t *gyro_handle_loop(const gyro_handle_t *handle) {
 void gyro_close(gyro_handle_t *handle, const gyro_close_cb cb) {
     auto *h = handle;
 
-    if (h->state == HandleState::CLOSING)
+    if (h->state == gyro::HandleState::CLOSING)
         return;
 
     h->cb_close = cb;
-    h->state = HandleState::CLOSING;
+    h->state = gyro::HandleState::CLOSING;
 }
 
 void *gyro_handle_data(const gyro_handle_t *handle) {
