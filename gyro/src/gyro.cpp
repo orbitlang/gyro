@@ -18,18 +18,6 @@ static long long TimeNow() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
 }
 
-static void FinishRequest(Gyro *loop, GyroRequest *request) {
-    const bool in_heap = request->heap.parent != nullptr
-                         || request->heap.left != nullptr
-                         || request->heap.right != nullptr
-                         || loop->r_mheap.PeekMin() == request;
-
-    if (in_heap)
-        loop->r_mheap.Remove(request);
-
-    loop->requests.Release(request);
-}
-
 static GyroRequest *RunTimer(Gyro *loop, const long long loop_time) {
     for (;;) {
         auto *request = loop->r_mheap.PeekMin();
@@ -78,11 +66,14 @@ static void Loop(Gyro *loop) {
                 timeout = 0;
         }
 
-        IOPoll(loop, timeout);
+        const auto error = IOPoll(loop, timeout);
+        if (error < 0) {
+            // TODO: report error;
+        }
     }
 }
 
-void gyro::ProcessHandle(Gyro *loop, GyroHandle *handle, const HandleDirection direction) {
+bool gyro::ProcessHandle(Gyro *loop, GyroHandle *handle, const HandleDirection direction) {
     auto *queue = &handle->in;
     if (direction == HandleDirection::OUT)
         queue = &handle->out;
@@ -105,7 +96,7 @@ void gyro::ProcessHandle(Gyro *loop, GyroHandle *handle, const HandleDirection d
         if (request->cb_op != nullptr) {
             status = request->cb_op(handle, request);
             if (status == GYRO_CB_RETRY)
-                return;
+                return true;
         }
 
         if (request->cb_user != nullptr)
@@ -115,6 +106,20 @@ void gyro::ProcessHandle(Gyro *loop, GyroHandle *handle, const HandleDirection d
 
         FinishRequest(loop, request);
     } while (queue->GetHead() != nullptr);
+
+    return false;
+}
+
+void gyro::FinishRequest(Gyro *loop, GyroRequest *request) {
+    const bool in_heap = request->heap.parent != nullptr
+                         || request->heap.left != nullptr
+                         || request->heap.right != nullptr
+                         || loop->r_mheap.PeekMin() == request;
+
+    if (in_heap)
+        loop->r_mheap.Remove(request);
+
+    loop->requests.Release(request);
 }
 
 // PUBLIC

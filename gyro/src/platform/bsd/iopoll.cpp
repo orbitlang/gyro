@@ -10,12 +10,51 @@
 #include <sys/fcntl.h>
 #include <unistd.h>
 
-#include <gyro_internal.h>
+#include <gyro/error.h>
+
+#include "backend.h"
+#include "error_internal.h"
+#include "gyro_internal.h"
 
 using namespace gyro;
 
-constexpr uint32_t kMaxEvents = 50;
 constexpr uintptr_t kWakeupIdent = 1;
+
+static void FlushChanges(Gyro *loop) {
+    if (loop->backend.nchanges == 0)
+        return;
+
+    constexpr timespec zero{};
+    kevent((int) loop->handler, loop->backend.changes, loop->backend.nchanges, nullptr, 0, &zero);
+
+    loop->backend.nchanges = 0;
+}
+
+static void AppendChange(Gyro *loop, GyroHandle *handle, const HandleDirection direction) {
+    int filter = EVFILT_READ;
+    if (direction == HandleDirection::OUT)
+        filter = EVFILT_WRITE;
+
+    if (loop->backend.nchanges == kMaxEvents)
+        FlushChanges(loop);
+
+    EV_SET(&loop->backend.changes[loop->backend.nchanges++], handle->handle, filter, EV_ADD | EV_ONESHOT, 0, 0, handle);
+}
+
+static void ReportFailToQueue(Gyro *loop, GyroHandle *handle, const HandleDirection direction, const int status) {
+    auto *queue = &handle->in;
+    if (direction == HandleDirection::OUT)
+        queue = &handle->out;
+
+    auto *request = queue->Dequeue();
+    while (request != nullptr) {
+        request->cb_user(handle, status, 0, request->data);
+
+        FinishRequest(loop, request);
+
+        request = queue->Dequeue();
+    }
+}
 
 bool gyro::IOInit(Gyro *loop) {
     struct kevent kev{};
@@ -39,17 +78,13 @@ bool gyro::IOInit(Gyro *loop) {
     }
 
     loop->handler = (uintptr_t) fd;
+    loop->backend.nchanges = 0;
 
     return true;
 }
 
-void gyro::IOCleanup(const Gyro *loop) {
-    close((int) loop->handler);
-}
-
-void gyro::IOPoll(const Gyro *loop, const long long timeout) {
+int gyro::IOPoll(Gyro *loop, const long long timeout) {
     struct kevent events[kMaxEvents];
-    struct kevent kev[2];
 
     timespec ts{};
     const timespec *tsp = nullptr;
@@ -61,20 +96,65 @@ void gyro::IOPoll(const Gyro *loop, const long long timeout) {
         tsp = &ts;
     }
 
-    const auto ret = kevent((int) loop->handler, nullptr, 0, events, kMaxEvents, tsp);
+    const auto ret = kevent((int) loop->handler,
+                            loop->backend.changes,
+                            loop->backend.nchanges,
+                            events,
+                            kMaxEvents,
+                            tsp);
     if (ret < 0) {
         if (errno == EINTR)
-            return; // Try again
+            return GYRO_COMPLETED;
 
-        // Never get here!
-        assert(false);
+        return ErrorToStatus(errno);
     }
+
+    loop->backend.nchanges = 0;
 
     for (int i = 0; i < ret; i++) {
         if (events[i].filter == EVFILT_USER)
             continue;
 
-        // TODO: impl this
+        auto *handle = (GyroHandle *) events[i].udata;
+
+        const auto direction = events[i].filter == EVFILT_WRITE ? HandleDirection::OUT : HandleDirection::IN;
+
+        if (events[i].flags & EV_ERROR) {
+            const int status = ErrorToStatus((int) events[i].data);
+
+            if (handle->state != HandleState::CLOSING) {
+                if (events[i].data == EBADF) {
+                    ReportFailToQueue(loop, handle, HandleDirection::IN, status);
+                    ReportFailToQueue(loop, handle, HandleDirection::OUT, status);
+
+                    continue;
+                }
+
+                ReportFailToQueue(loop, handle, direction, status);
+            }
+
+            continue;
+        }
+
+        if (direction == HandleDirection::OUT && events[i].flags & EV_EOF) {
+            const int status = events[i].fflags != 0
+                                   ? ErrorToStatus((int) events[i].fflags)
+                                   : GYRO_EPIPE;
+
+            ReportFailToQueue(loop, handle, direction, status);
+
+            continue;
+        }
+
+        if (ProcessHandle(loop, handle, direction))
+            AppendChange(loop, handle, direction);
     }
+
+    return GYRO_COMPLETED;
 }
+
+void gyro::IOCleanup(const Gyro *loop) {
+    close((int) loop->handler);
+}
+
 #endif

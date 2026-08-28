@@ -7,6 +7,8 @@
 
 #include <gyro/allocator.h>
 
+#include "platform/backend.h"
+
 #include "support/reqstore.h"
 
 #include "handle_internal.h"
@@ -15,11 +17,13 @@
 using PollHandler = uintptr_t;
 
 struct Gyro {
+    gyro::BackendData backend{};
+
     const gyro_allocator_t allocator;
 
-    gyro::ReqHeap r_mheap;
-
     gyro::support::RequestStore requests;
+
+    gyro::ReqHeap r_mheap;
 
     PollHandler handler = UINTMAX_MAX;
 
@@ -32,11 +36,13 @@ struct Gyro {
 namespace gyro {
     bool IOInit(Gyro *loop);
 
+    bool ProcessHandle(Gyro *loop, GyroHandle *handle, HandleDirection direction);
+
+    int IOPoll(Gyro *loop, long long timeout);
+
+    void FinishRequest(Gyro *loop, GyroRequest *request);
+
     void IOCleanup(const Gyro *loop);
-
-    void IOPoll(const Gyro *loop, long long timeout);
-
-    void ProcessHandle(Gyro *loop,  GyroHandle *handle, HandleDirection direction);
 }
 
 #endif // !GYRO_GYRO_INTERNAL_H_
