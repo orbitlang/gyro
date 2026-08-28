@@ -25,7 +25,7 @@ static int FlushChanges(Gyro *loop) {
         return GYRO_COMPLETED;
 
     constexpr timespec zero{};
-    if (kevent((int) loop->handler, loop->backend.changes, loop->backend.nchanges, nullptr, 0, &zero) < 0) {
+    if (kevent(loop->handler, loop->backend.changes, loop->backend.nchanges, nullptr, 0, &zero) < 0) {
         if (errno == EINTR)
             return GYRO_COMPLETED;
 
@@ -89,7 +89,7 @@ bool gyro::IOInit(Gyro *loop) {
         return false;
     }
 
-    loop->handler = (uintptr_t) fd;
+    loop->handler = fd;
     loop->backend.nchanges = 0;
 
     return true;
@@ -108,7 +108,7 @@ int gyro::IOPoll(Gyro *loop, const long long timeout) {
         tsp = &ts;
     }
 
-    const auto ret = kevent((int) loop->handler,
+    const auto ret = kevent(loop->handler,
                             loop->backend.changes,
                             loop->backend.nchanges,
                             events,
@@ -169,7 +169,7 @@ int gyro::IOPoll(Gyro *loop, const long long timeout) {
 }
 
 void gyro::IOCleanup(const Gyro *loop) {
-    close((int) loop->handler);
+    close(loop->handler);
 }
 
 #endif

@@ -149,7 +149,7 @@ void gyro_free(gyro_t *gyro) {
 
     const auto allocator = gyro->allocator;
 
-    if (gyro->handler != UINTMAX_MAX)
+    if (gyro->handler != kInvalidPoll)
         IOCleanup(gyro);
 
     gyro->~Gyro();

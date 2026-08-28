@@ -8,13 +8,12 @@
 #include <gyro/allocator.h>
 
 #include "platform/backend.h"
+#include "platform/ostypes.h"
 
 #include "support/reqstore.h"
 
 #include "handle_internal.h"
 #include "request_minheap.h"
-
-using PollHandler = uintptr_t;
 
 struct Gyro {
     gyro::BackendData backend{};
@@ -25,7 +24,7 @@ struct Gyro {
 
     gyro::ReqHeap r_mheap;
 
-    PollHandler handler = UINTMAX_MAX;
+    gyro::OSPoll handler = gyro::kInvalidPoll;
 
     bool should_terminate = false;
 

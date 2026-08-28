@@ -9,17 +9,10 @@
 #include <gyro/loop.h>
 
 #include "support/queue.h"
+#include "platform/ostypes.h"
 #include "request_internal.h"
 
 namespace gyro {
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
-#define GYRO_OSHANDLE_EMPTY (nullptr)
-    using OSHandle = void *;
-#else
-#define GYRO_OSHANDLE_EMPTY (-1)
-    using OSHandle = int;
-#endif
-
     enum class HandleDirection {
         IN,
         OUT
@@ -42,7 +35,7 @@ struct GyroHandle {
 
     void *data = nullptr;
 
-    gyro::OSHandle handle = GYRO_OSHANDLE_EMPTY;
+    gyro::OSSocket handle = gyro::kInvalidSocket;
 
     gyro::HandleState state = gyro::HandleState::ACTIVE;
 };
