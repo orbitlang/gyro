@@ -4,6 +4,7 @@
 
 #include <chrono>
 
+#include <gyro/error.h>
 #include <gyro/version.h>
 
 #include "gyro_internal.h"
@@ -43,14 +44,10 @@ static GyroRequest *RunTimer(Gyro *loop, const long long loop_time) {
             remove = false;
         }
 
-        if (request->cb_op != nullptr)
-            request->cb_op(nullptr, request);
-
-        if (request->cb_user != nullptr)
-            request->cb_user(nullptr, 0, 0, request->data);
-
+        // A plain timer is held by no queue, so this is where it reports and
+        // is released. A deadline is left to ProcessHandle.
         if (remove)
-            FinishRequest(loop, request);
+            gyro_op_complete(request, GYRO_COMPLETED, 0);
     }
 }
 
@@ -73,41 +70,25 @@ static void Loop(Gyro *loop) {
     }
 }
 
-bool gyro::ProcessHandle(Gyro *loop, GyroHandle *handle, const HandleDirection direction) {
-    auto *queue = &handle->in;
-    if (direction == HandleDirection::OUT)
-        queue = &handle->out;
+bool gyro::ProcessHandle(GyroHandle *handle, const HandleDirection direction) {
+    const auto *queue = direction == HandleDirection::OUT ? &handle->out : &handle->in;
 
-    do {
+    for (;;) {
         auto *request = queue->GetHead();
         if (request == nullptr)
-            break;
+            return false;
 
         if (request->cancelled) {
-            queue->Dequeue();
-
-            FinishRequest(loop, request);
+            gyro_op_complete(request, GYRO_ECANCELED, request->io.transferred);
 
             continue;
         }
 
-        auto status = GYRO_CB_SUCCESS;
-
-        if (request->cb_op != nullptr) {
-            status = request->cb_op(handle, request);
-            if (status == GYRO_CB_RETRY)
-                return true;
-        }
-
-        if (request->cb_user != nullptr)
-            request->cb_user(handle, status, request->io.transferred, request->data);
-
-        queue->Dequeue();
-
-        FinishRequest(loop, request);
-    } while (queue->GetHead() != nullptr);
-
-    return false;
+        // The operation reports its own outcome through gyro_op_complete, so
+        // what comes back says only what the loop should do next.
+        if (request->cb_op(handle, request) == GYRO_CB_RETRY)
+            return true;
+    }
 }
 
 void gyro::FinishRequest(Gyro *loop, GyroRequest *request) {

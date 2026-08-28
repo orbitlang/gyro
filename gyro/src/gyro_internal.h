@@ -35,7 +35,7 @@ struct Gyro {
 namespace gyro {
     bool IOInit(Gyro *loop);
 
-    bool ProcessHandle(Gyro *loop, GyroHandle *handle, HandleDirection direction);
+    bool ProcessHandle(GyroHandle *handle, HandleDirection direction);
 
     int IOPoll(Gyro *loop, long long timeout);
 

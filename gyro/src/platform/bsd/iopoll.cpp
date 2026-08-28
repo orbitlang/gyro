@@ -53,19 +53,12 @@ static int AppendChange(Gyro *loop, GyroHandle *handle, const HandleDirection di
     return GYRO_COMPLETED;
 }
 
-static void ReportFailToQueue(Gyro *loop, GyroHandle *handle, const HandleDirection direction, const int status) {
-    auto *queue = &handle->in;
-    if (direction == HandleDirection::OUT)
-        queue = &handle->out;
+static void ReportFailToQueue(const GyroHandle *handle, const HandleDirection direction, const int status) {
+    const auto *queue = direction == HandleDirection::OUT ? &handle->out : &handle->in;
 
-    auto *request = queue->Dequeue();
-    while (request != nullptr) {
-        request->cb_user(handle, status, 0, request->data);
-
-        FinishRequest(loop, request);
-
-        request = queue->Dequeue();
-    }
+    // gyro_op_complete() unlinks each request, so the head advances by itself.
+    while (auto *request = queue->GetHead())
+        gyro_op_complete(request, status, request->io.transferred);
 }
 
 bool gyro::IOInit(Gyro *loop) {
@@ -136,29 +129,27 @@ int gyro::IOPoll(Gyro *loop, const long long timeout) {
 
             if (handle->state != HandleState::CLOSING) {
                 if (events[i].data == EBADF) {
-                    ReportFailToQueue(loop, handle, HandleDirection::IN, status);
-                    ReportFailToQueue(loop, handle, HandleDirection::OUT, status);
+                    ReportFailToQueue(handle, HandleDirection::IN, status);
+                    ReportFailToQueue(handle, HandleDirection::OUT, status);
 
                     continue;
                 }
 
-                ReportFailToQueue(loop, handle, direction, status);
+                ReportFailToQueue(handle, direction, status);
             }
 
             continue;
         }
 
         if (direction == HandleDirection::OUT && (events[i].flags & EV_EOF)) {
-            const int status = events[i].fflags != 0
-                                   ? ErrorToStatus((int) events[i].fflags)
-                                   : GYRO_EPIPE;
+            const int status = events[i].fflags != 0 ? ErrorToStatus((int) events[i].fflags) : GYRO_EPIPE;
 
-            ReportFailToQueue(loop, handle, direction, status);
+            ReportFailToQueue(handle, direction, status);
 
             continue;
         }
 
-        if (ProcessHandle(loop, handle, direction)) {
+        if (ProcessHandle(handle, direction)) {
             const auto error = AppendChange(loop, handle, direction);
             if (error != GYRO_COMPLETED)
                 return error;

@@ -57,6 +57,20 @@ static inline gyro_request_t gyro_request_invalid(void) {
  */
 GYRO_API int gyro_request_cancel(gyro_t *gyro, gyro_request_t token);
 
+/**
+ * @brief Reports the outcome of an operation and hands it back to the loop.
+ *
+ * Called by the operation callback once it knows what happened. The operation
+ * is unlinked from its handle before the user callback runs, so user code can
+ * never reach a request that is completing, and is released afterwards: the
+ * pointer must not be used again.
+ *
+ * @param op The operation being reported. Invalid once this returns.
+ * @param status GYRO_COMPLETED, or a negative code such as GYRO_EOF.
+ * @param transferred Bytes moved by the operation as a whole.
+ */
+GYRO_API void gyro_op_complete(gyro_op_t *op, int status, size_t transferred);
+
 #ifdef __cplusplus
 }
 #endif

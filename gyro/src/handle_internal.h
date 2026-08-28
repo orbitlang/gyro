@@ -13,11 +13,6 @@
 #include "request_internal.h"
 
 namespace gyro {
-    enum class HandleDirection {
-        IN,
-        OUT
-    };
-
     enum class HandleState {
         ACTIVE,
         CLOSING

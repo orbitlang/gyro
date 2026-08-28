@@ -8,8 +8,13 @@
 #include <gyro/buf.h>
 #include <gyro/request.h>
 
+#include "hdirection.h"
+
 struct GyroRequest {
     gyro_t *loop;
+
+    /// Handle the operation runs on, null for a plain timer.
+    GyroHandle *handle;
 
     uint64_t generation;
     uint32_t index;
@@ -47,6 +52,9 @@ struct GyroRequest {
     } io;
 
     bool cancelled;
+
+    /// Which queue of that handle holds it.
+    gyro::HandleDirection direction;
 };
 
 namespace gyro {
