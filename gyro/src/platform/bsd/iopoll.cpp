@@ -20,25 +20,37 @@ using namespace gyro;
 
 constexpr uintptr_t kWakeupIdent = 1;
 
-static void FlushChanges(Gyro *loop) {
+static int FlushChanges(Gyro *loop) {
     if (loop->backend.nchanges == 0)
-        return;
+        return GYRO_COMPLETED;
 
     constexpr timespec zero{};
-    kevent((int) loop->handler, loop->backend.changes, loop->backend.nchanges, nullptr, 0, &zero);
+    if (kevent((int) loop->handler, loop->backend.changes, loop->backend.nchanges, nullptr, 0, &zero) < 0) {
+        if (errno == EINTR)
+            return GYRO_COMPLETED;
+
+        return ErrorToStatus(errno);
+    }
 
     loop->backend.nchanges = 0;
+
+    return GYRO_COMPLETED;
 }
 
-static void AppendChange(Gyro *loop, GyroHandle *handle, const HandleDirection direction) {
+static int AppendChange(Gyro *loop, GyroHandle *handle, const HandleDirection direction) {
     int filter = EVFILT_READ;
     if (direction == HandleDirection::OUT)
         filter = EVFILT_WRITE;
 
-    if (loop->backend.nchanges == kMaxEvents)
-        FlushChanges(loop);
+    if (loop->backend.nchanges == kMaxEvents) {
+        const auto error = FlushChanges(loop);
+        if (error != GYRO_COMPLETED)
+            return error;
+    }
 
     EV_SET(&loop->backend.changes[loop->backend.nchanges++], handle->handle, filter, EV_ADD | EV_ONESHOT, 0, 0, handle);
+
+    return GYRO_COMPLETED;
 }
 
 static void ReportFailToQueue(Gyro *loop, GyroHandle *handle, const HandleDirection direction, const int status) {
@@ -136,7 +148,7 @@ int gyro::IOPoll(Gyro *loop, const long long timeout) {
             continue;
         }
 
-        if (direction == HandleDirection::OUT && events[i].flags & EV_EOF) {
+        if (direction == HandleDirection::OUT && (events[i].flags & EV_EOF)) {
             const int status = events[i].fflags != 0
                                    ? ErrorToStatus((int) events[i].fflags)
                                    : GYRO_EPIPE;
@@ -146,8 +158,11 @@ int gyro::IOPoll(Gyro *loop, const long long timeout) {
             continue;
         }
 
-        if (ProcessHandle(loop, handle, direction))
-            AppendChange(loop, handle, direction);
+        if (ProcessHandle(loop, handle, direction)) {
+            const auto error = AppendChange(loop, handle, direction);
+            if (error != GYRO_COMPLETED)
+                return error;
+        }
     }
 
     return GYRO_COMPLETED;
