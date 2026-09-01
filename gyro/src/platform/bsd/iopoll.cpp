@@ -163,4 +163,8 @@ void gyro::IOCleanup(const Gyro *loop) {
     close(loop->handler);
 }
 
+int gyro::IOSubmit(GyroRequest *request) {
+    return AppendChange(request->loop, request->handle, request->direction);
+}
+
 #endif

@@ -41,12 +41,12 @@ static GyroRequest *RunTimer(Gyro *loop, const long long loop_time) {
 
 static void Loop(Gyro *loop) {
     while (!loop->should_terminate) {
-        const auto loop_time = TimeNow();
+        loop->time = TimeNow();
         auto timeout = (long long) kLoopTimeoutMs;
 
-        const auto *request = RunTimer(loop, loop_time);
+        const auto *request = RunTimer(loop, loop->time);
         if (request != nullptr) {
-            timeout = request->timer.timeout - loop_time;
+            timeout = request->timer.timeout - loop->time;
             if (timeout < 0)
                 timeout = 0;
         }
@@ -86,6 +86,51 @@ bool gyro::ProcessHandle(GyroHandle *handle, const HandleDirection direction) {
         if (request->cb_op(handle, request) == GYRO_CB_RETRY)
             return true;
     }
+}
+
+int gyro::Submit(GyroRequest *request, const long long timeout) {
+    const auto timer_only = request->handle == nullptr;
+    auto *loop = request->loop;
+
+    // Not started yet, get time now.
+    if (loop->time == 0)
+        loop->time = TimeNow();
+
+    if (timer_only) {
+        request->timer.timeout = loop->time + timeout;
+        request->timer.id = loop->time_id++;
+
+        loop->r_mheap.Insert(request);
+
+        return GYRO_COMPLETED;
+    }
+
+    auto *queue = request->direction == HandleDirection::OUT ? &request->handle->out : &request->handle->in;
+
+    const auto was_idle = queue->GetHead() == nullptr;
+
+    if (timeout > 0) {
+        request->timer.timeout = loop->time + timeout;
+        request->timer.id = loop->time_id++;
+
+        request->timer.cancel_on_timeout = true;
+
+        loop->r_mheap.Insert(request);
+    }
+
+    queue->Enqueue(request);
+
+    if (!was_idle)
+        return GYRO_COMPLETED;
+
+    const auto status = IOSubmit(request);
+    if (status != GYRO_COMPLETED) {
+        queue->Remove(request);
+
+        FinishRequest(loop, request);
+    }
+
+    return status;
 }
 
 void gyro::FinishRequest(Gyro *loop, GyroRequest *request) {
