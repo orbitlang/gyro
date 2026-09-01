@@ -29,25 +29,13 @@ static GyroRequest *RunTimer(Gyro *loop, const long long loop_time) {
 
         bool remove = true;
         if (request->timer.cancel_on_timeout) {
-            // An I/O deadline: the operation is marked canceled and left where it
-            // is. ProcessHandle owns its removal, so nothing is released here.
-            RequestIndex index{};
+            request->cancelled = true;
 
-            index.fields.generation = request->generation;
-            index.fields.index = request->index;
-
-            gyro_request_t token;
-            token._opaque = index._opaque;
-
-            gyro_request_cancel(loop, token);
-
-            remove = false;
+            remove = IOCancel(request);
         }
 
-        // A plain timer is held by no queue, so this is where it reports and
-        // is released. A deadline is left to ProcessHandle.
         if (remove)
-            gyro_op_complete(request, GYRO_COMPLETED, 0);
+            gyro_op_complete(request, request->cancelled ? GYRO_ECANCELED : GYRO_COMPLETED, request->io.transferred);
     }
 }
 
@@ -68,6 +56,15 @@ static void Loop(Gyro *loop) {
             // TODO: report error;
         }
     }
+}
+
+bool gyro::IOCancel(GyroRequest *request) {
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+    // TODO: CancelIoEx, the completion packet reports the outcome.
+    return false;
+#else
+    return true;
+#endif
 }
 
 bool gyro::ProcessHandle(GyroHandle *handle, const HandleDirection direction) {

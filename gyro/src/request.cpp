@@ -11,8 +11,16 @@
 using namespace gyro;
 
 extern "C" {
-int gyro_request_cancel(gyro_t *gyro, gyro_request_t token) {
-    // TODO: impl this
+int gyro_request_cancel(gyro_t *gyro, const gyro_request_t token) {
+    RequestIndex tk{};
+
+    tk._opaque = token._opaque;
+
+    auto *request = gyro->requests.Resolve(tk);
+
+    if (request != nullptr)
+        request->cancelled = true;
+
     return GYRO_COMPLETED;
 }
 

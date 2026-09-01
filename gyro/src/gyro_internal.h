@@ -33,6 +33,8 @@ struct Gyro {
 };
 
 namespace gyro {
+    bool IOCancel(GyroRequest *request);
+
     bool IOInit(Gyro *loop);
 
     bool ProcessHandle(GyroHandle *handle, HandleDirection direction);
