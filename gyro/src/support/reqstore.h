@@ -7,12 +7,19 @@
 
 #include <cstring>
 #include <new>
+#include <type_traits>
 
 #include <gyro/allocator.h>
 
 #include "request_internal.h"
 
 namespace gyro::support {
+    // Acquire() wipes a slot with memset rather than field by field, so that a
+    // field added to GyroRequest is covered without anyone having to remember
+    // it. That trade holds only while the type stays trivial.
+    static_assert(std::is_trivially_copyable_v<GyroRequest>,
+                  "RequestStore clears slots with memset; GyroRequest must stay trivially copyable");
+
     /**
      * @brief Pool of requests, addressed by a token that never dangles.
      *
@@ -67,7 +74,8 @@ namespace gyro::support {
             if (this->npages_ == this->ndir_) {
                 const auto wanted = this->ndir_ == 0 ? 8 : this->ndir_ * 2;
 
-                auto **tmp = (GyroRequest **) this->allocator_->alloc(wanted * sizeof(GyroRequest *), this->allocator_->ctx);
+                auto **tmp = (GyroRequest **) this->allocator_->alloc(wanted * sizeof(GyroRequest *),
+                                                                      this->allocator_->ctx);
                 if (tmp == nullptr)
                     return false;
 
@@ -82,7 +90,8 @@ namespace gyro::support {
             }
 
             // Alloc page
-            auto *page = (GyroRequest *) this->allocator_->alloc(sizeof(GyroRequest) * kPageSize, this->allocator_->ctx);
+            auto *page = (GyroRequest *) this->allocator_->
+                    alloc(sizeof(GyroRequest) * kPageSize, this->allocator_->ctx);
             if (page == nullptr)
                 return false;
 
@@ -134,6 +143,9 @@ namespace gyro::support {
         /**
          * @brief Takes a request out of the store.
          *
+         * The request comes back blank, whatever its previous occupant left in
+         * it, so callers only have to set the fields their operation uses.
+         *
          * @param out_token Receives the token naming the returned request. Left
          *                  untouched when the store cannot satisfy the request.
          * @return The request, or nullptr if the ceiling was reached or an
@@ -149,6 +161,17 @@ namespace gyro::support {
 
             out_token.fields.generation = req->generation;
             out_token.fields.index = req->index;
+
+            // A released slot keeps whatever its last occupant left in it, and a
+            // stale 'cancelled' or 'cancel_on_timeout' would quietly ruin the
+            // next operation to land here. Hand out a blank request instead of
+            // trusting every caller to overwrite every field.
+            memset(req, 0, sizeof(GyroRequest));
+
+            // Identity belongs to the slot, not to the operation: restoring it
+            // is what keeps the token just handed out meaningful.
+            req->generation = out_token.fields.generation;
+            req->index = out_token.fields.index;
 
             return req;
         }
