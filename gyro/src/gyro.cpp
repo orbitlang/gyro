@@ -123,12 +123,7 @@ int gyro::Submit(GyroRequest *request, const long long timeout) {
 }
 
 void gyro::FinishRequest(Gyro *loop, GyroRequest *request) {
-    const bool in_heap = request->heap.parent != nullptr
-                         || request->heap.left != nullptr
-                         || request->heap.right != nullptr
-                         || loop->r_mheap.PeekMin() == request;
-
-    if (in_heap)
+    if (loop->InHeap(request))
         loop->r_mheap.Remove(request);
 
     loop->requests.Release(request);

@@ -51,9 +51,18 @@ static inline gyro_request_t gyro_request_invalid(void) {
  * reports GYRO_ECANCELED. An operation that has already completed cannot be
  * taken back and reports its real outcome.
  *
+ * What cancelling actually does is bring the operation's deadline forward to
+ * now, so the loop reports it on its next turn rather than whenever the
+ * operation would have finished on its own. An idle socket that was going to
+ * keep a read waiting all day does not delay the callback, and neither does a
+ * timer set for an hour from now.
+ *
  * Doing nothing counts as success, so this is safe to call unconditionally;
  * on an operation that has already finished, on a stale token, or on an
- * invalid one.
+ * invalid one. Cancelling twice is the same as cancelling once.
+ *
+ * @warning Must be called on the loop's own thread, from a callback or from
+ * between runs. The thread-safe form is not implemented yet.
  */
 GYRO_API int gyro_request_cancel(gyro_t *gyro, gyro_request_t token);
 

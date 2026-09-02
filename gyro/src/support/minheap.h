@@ -114,7 +114,7 @@ namespace gyro::support {
          *
          * @param t Node whose children must be adopted.
          */
-        void SetChildrenParent(T *t) const {
+        static void SetChildrenParent(T *t) {
             if (t->heap.left != nullptr)
                 t->heap.left->heap.parent = t;
 
@@ -166,13 +166,13 @@ namespace gyro::support {
             // Set parent left/right node
             t->heap.parent->heap.left = left;
             t->heap.parent->heap.right = right;
-            this->SetChildrenParent(t->heap.parent);
+            SetChildrenParent(t->heap.parent);
 
             // Set new t node parent
             t->heap.parent = t->heap.parent->heap.parent;
 
             // Set the parent of the left and right nodes to t
-            this->SetChildrenParent(t);
+            SetChildrenParent(t);
 
             // Set super parent link to t
             *super_link = t;
@@ -186,7 +186,7 @@ namespace gyro::support {
          *
          * @return The lesser node.
          */
-        T *PeekMin() {
+        T *PeekMin() const {
             return this->head;
         }
 
@@ -281,7 +281,7 @@ namespace gyro::support {
             // Set left and right nodes to target
             target->heap.left = t->heap.left != target ? t->heap.left : nullptr;
             target->heap.right = t->heap.right != target ? t->heap.right : nullptr;
-            this->SetChildrenParent(target);
+            SetChildrenParent(target);
 
             // Cleans the removed item
             t->heap.parent = nullptr;

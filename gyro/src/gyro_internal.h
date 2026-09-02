@@ -42,6 +42,20 @@ struct Gyro {
 
     explicit Gyro(const gyro_allocator_t *allocator) : allocator(*allocator), requests(&this->allocator) {
     }
+
+    /**
+     * @brief Tells whether a request is currently in the timer heap.
+     *
+     * Read off the request's own links rather than a flag, which works only
+     * because every path that takes a node out of the heap clears them. The
+     * root carries no links either, hence the last term.
+     */
+    bool InHeap(const GyroRequest *request) const {
+        return request->heap.parent != nullptr
+               || request->heap.left != nullptr
+               || request->heap.right != nullptr
+               || this->r_mheap.PeekMin() == request;
+    }
 };
 
 namespace gyro {

@@ -17,9 +17,20 @@ int gyro_request_cancel(gyro_t *gyro, const gyro_request_t token) {
     tk._opaque = token._opaque;
 
     auto *request = gyro->requests.Resolve(tk);
-
-    if (request != nullptr)
+    if (request != nullptr && !request->cancelled) {
         request->cancelled = true;
+
+        if (request->handle != nullptr)
+            request->timer.cancel_on_timeout = true;
+
+        auto *loop = request->loop;
+        if (loop->InHeap(request))
+            loop->r_mheap.Remove(request);
+
+        request->timer.timeout = loop->time;
+
+        loop->r_mheap.Insert(request);
+    }
 
     return GYRO_COMPLETED;
 }
