@@ -64,7 +64,7 @@ static inline gyro_request_t gyro_request_invalid(void) {
  * @warning Must be called on the loop's own thread, from a callback or from
  * between runs. The thread-safe form is not implemented yet.
  */
-GYRO_API int gyro_request_cancel(gyro_t *gyro, gyro_request_t token);
+GYRO_API int gyro_request_cancel(const gyro_t *gyro, gyro_request_t token);
 
 /**
  * @brief Reports the outcome of an operation and hands it back to the loop.

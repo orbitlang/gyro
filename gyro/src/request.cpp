@@ -10,27 +10,33 @@
 
 using namespace gyro;
 
+void gyro::CancelRequest(GyroRequest *request) {
+    if (request->cancelled)
+        return;
+
+    request->cancelled = true;
+
+    if (request->handle != nullptr)
+        request->timer.cancel_on_timeout = true;
+
+    auto *loop = request->loop;
+    if (loop->InHeap(request))
+        loop->r_mheap.Remove(request);
+
+    request->timer.timeout = loop->time;
+
+    loop->r_mheap.Insert(request);
+}
+
 extern "C" {
-int gyro_request_cancel(gyro_t *gyro, const gyro_request_t token) {
+int gyro_request_cancel(const gyro_t *gyro, const gyro_request_t token) {
     RequestIndex tk{};
 
     tk._opaque = token._opaque;
 
     auto *request = gyro->requests.Resolve(tk);
-    if (request != nullptr && !request->cancelled) {
-        request->cancelled = true;
-
-        if (request->handle != nullptr)
-            request->timer.cancel_on_timeout = true;
-
-        auto *loop = request->loop;
-        if (loop->InHeap(request))
-            loop->r_mheap.Remove(request);
-
-        request->timer.timeout = loop->time;
-
-        loop->r_mheap.Insert(request);
-    }
+    if (request != nullptr)
+        CancelRequest(request);
 
     return GYRO_COMPLETED;
 }

@@ -70,6 +70,8 @@ namespace gyro {
             uint64_t _opaque;
         };
     };
+
+    void CancelRequest(GyroRequest *request);
 } // namespace gyro
 
 #endif // !GYRO_REQUEST_INTERNAL_H_
