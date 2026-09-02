@@ -5,6 +5,8 @@
 #ifndef GYRO_GYRO_INTERNAL_H_
 #define GYRO_GYRO_INTERNAL_H_
 
+#include <atomic>
+
 #include <gyro/allocator.h>
 
 #include "platform/backend.h"
@@ -36,7 +38,7 @@ struct Gyro {
     /// deadlines still fire in submission order.
     long long time_id = 0;
 
-    bool should_terminate = false;
+    std::atomic_bool should_terminate = false;
 
     explicit Gyro(const gyro_allocator_t *allocator) : allocator(*allocator), requests(&this->allocator) {
     }
@@ -130,6 +132,14 @@ namespace gyro {
      * @brief Backend hook: releases what IOInit() opened.
      */
     void IOCleanup(const Gyro *loop);
+
+    /**
+     * @brief Backend hook: breaks the loop out of its wait.
+     *
+     * The one place the loop is reachable from another thread, and the reason
+     * a loop blocking with no deadline can still be told anything at all.
+     */
+    void IOWakeup(const Gyro *loop);
 }
 
 #endif // !GYRO_GYRO_INTERNAL_H_

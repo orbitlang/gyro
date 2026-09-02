@@ -11,8 +11,9 @@
 
 using namespace gyro;
 
-// TODO: temporary, remove once the backend can block
-constexpr unsigned int kLoopTimeoutMs = 24;
+/// Timeout meaning "no deadline of our own": block until the backend has
+/// something to report.
+constexpr long long kBlockForever = -1;
 
 static long long TimeNow() {
     const auto now = std::chrono::steady_clock::now();
@@ -39,10 +40,10 @@ static GyroRequest *RunTimer(Gyro *loop, const long long loop_time) {
     }
 }
 
-static void Loop(Gyro *loop) {
-    while (!loop->should_terminate) {
+static int Loop(Gyro *loop) {
+    while (!loop->should_terminate.load(std::memory_order_relaxed)) {
         loop->time = TimeNow();
-        auto timeout = (long long) kLoopTimeoutMs;
+        auto timeout = kBlockForever;
 
         const auto *request = RunTimer(loop, loop->time);
         if (request != nullptr) {
@@ -52,10 +53,11 @@ static void Loop(Gyro *loop) {
         }
 
         const auto error = IOPoll(loop, timeout);
-        if (error < 0) {
-            // TODO: report error;
-        }
+        if (error < 0)
+            return error;
     }
+
+    return GYRO_COMPLETED;
 }
 
 bool gyro::ProcessHandle(GyroHandle *handle, const HandleDirection direction) {
@@ -82,10 +84,6 @@ bool gyro::ProcessHandle(GyroHandle *handle, const HandleDirection direction) {
 int gyro::Submit(GyroRequest *request, const long long timeout) {
     const auto timer_only = request->handle == nullptr;
     auto *loop = request->loop;
-
-    // Not started yet, get time now.
-    if (loop->time == 0)
-        loop->time = TimeNow();
 
     if (timer_only) {
         request->timer.timeout = loop->time + timeout;
@@ -152,9 +150,29 @@ gyro_t *gyro_new(const gyro_allocator_t *allocator) {
 
             return nullptr;
         }
+
+        gyro->time = TimeNow();
     }
 
     return gyro;
+}
+
+int gyro_run(gyro_t *gyro) {
+    if (gyro == nullptr)
+        return GYRO_EINVAL;
+
+    gyro->should_terminate.store(false, std::memory_order_relaxed);
+
+    return Loop(gyro);
+}
+
+void gyro_stop(gyro_t *gyro) {
+    if (gyro == nullptr)
+        return;
+
+    gyro->should_terminate.store(true, std::memory_order_relaxed);
+
+    IOWakeup(gyro);
 }
 
 void gyro_free(gyro_t *gyro) {

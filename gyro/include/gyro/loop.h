@@ -24,7 +24,11 @@ typedef struct Gyro gyro_t;
 
 GYRO_API gyro_t *gyro_new(const gyro_allocator_t *allocator);
 
+GYRO_API int gyro_run(gyro_t *gyro);
+
 GYRO_API void gyro_free(gyro_t *gyro);
+
+GYRO_API void gyro_stop(gyro_t *gyro);
 
 #ifdef __cplusplus
 }

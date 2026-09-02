@@ -163,12 +163,25 @@ int gyro::IOPoll(Gyro *loop, const long long timeout) {
     return GYRO_COMPLETED;
 }
 
+int gyro::IOSubmit(GyroRequest *request) {
+    return AppendChange(request->loop, request->handle, request->direction);
+}
+
 void gyro::IOCleanup(const Gyro *loop) {
     close(loop->handler);
 }
 
-int gyro::IOSubmit(GyroRequest *request) {
-    return AppendChange(request->loop, request->handle, request->direction);
+void gyro::IOWakeup(const Gyro *loop) {
+    struct kevent kev{};
+
+    EV_SET(&kev, kWakeupIdent, EVFILT_USER, 0, NOTE_TRIGGER, 0, nullptr);
+
+    while (kevent(loop->handler, &kev, 1, nullptr, 0, nullptr) < 0) {
+        if (errno == EINTR)
+            continue;
+
+        break;
+    }
 }
 
 #endif
