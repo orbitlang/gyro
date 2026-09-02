@@ -61,6 +61,10 @@ static void ReportFailToQueue(const GyroHandle *handle, const HandleDirection di
         gyro_op_complete(request, status, request->io.transferred);
 }
 
+bool gyro::IOCancel(GyroRequest *request) {
+    return true;
+}
+
 bool gyro::IOInit(Gyro *loop) {
     struct kevent kev{};
 

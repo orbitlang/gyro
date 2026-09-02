@@ -58,15 +58,6 @@ static void Loop(Gyro *loop) {
     }
 }
 
-bool gyro::IOCancel(GyroRequest *request) {
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
-    // TODO: CancelIoEx, the completion packet reports the outcome.
-    return false;
-#else
-    return true;
-#endif
-}
-
 bool gyro::ProcessHandle(GyroHandle *handle, const HandleDirection direction) {
     const auto *queue = direction == HandleDirection::OUT ? &handle->out : &handle->in;
 
