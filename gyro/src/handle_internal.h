@@ -24,6 +24,8 @@ struct GyroHandle {
 
     gyro::support::Queue<GyroRequest> out;
 
+    GyroHandle *next = nullptr;
+
     gyro_t *gyro = nullptr;
 
     gyro_close_cb cb_close = nullptr;

@@ -4,6 +4,7 @@
 
 #include <gyro/loop.h>
 
+#include "gyro_internal.h"
 #include "handle_internal.h"
 
 extern "C" {
@@ -19,6 +20,14 @@ void gyro_close(gyro_handle_t *handle, const gyro_close_cb cb) {
 
     h->cb_close = cb;
     h->state = gyro::HandleState::CLOSING;
+
+    for (auto *cursor = h->in.GetHead(); cursor != nullptr; cursor = cursor->queue.next)
+        gyro::CancelRequest(cursor);
+
+    for (auto *cursor = h->out.GetHead(); cursor != nullptr; cursor = cursor->queue.next)
+        gyro::CancelRequest(cursor);
+
+    handle->gyro->AddToClosingQueue(handle);
 }
 
 void *gyro_handle_data(const gyro_handle_t *handle) {

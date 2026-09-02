@@ -26,7 +26,7 @@ struct Gyro {
 
     gyro::ReqHeap r_mheap;
 
-    gyro::OSPoll handler = gyro::kInvalidPoll;
+    GyroHandle *closing_queue = nullptr;
 
     /// Loop's notion of now, in milliseconds, refreshed once per iteration.
     /// Every deadline is computed against it rather than against a fresh
@@ -37,6 +37,8 @@ struct Gyro {
     /// Hands out the tie-break for timers sharing a deadline, so that equal
     /// deadlines still fire in submission order.
     long long time_id = 0;
+
+    gyro::OSPoll handler = gyro::kInvalidPoll;
 
     std::atomic_bool should_terminate = false;
 
@@ -55,6 +57,17 @@ struct Gyro {
                || request->heap.left != nullptr
                || request->heap.right != nullptr
                || this->r_mheap.PeekMin() == request;
+    }
+
+    void AddToClosingQueue(GyroHandle *handle) {
+        if (handle == nullptr)
+            return;
+
+        assert(handle->next == nullptr);
+        assert(handle->gyro == this);
+
+        handle->next = this->closing_queue;
+        this->closing_queue = handle;
     }
 };
 
