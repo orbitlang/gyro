@@ -12,4 +12,7 @@
 #include <gyro/request.h>
 #include <gyro/version.h>
 
+// Network
+#include <gyro/tcp.h>
+
 #endif // !GYRO_GYRO_H_
