@@ -41,6 +41,7 @@ namespace gyro::support {
         static constexpr uint32_t kPageSize = 1u << kPageShift;
         static constexpr uint32_t kPageMask = kPageSize - 1;
         static constexpr uint32_t kIndexBits = 24;
+        static constexpr uint32_t kMaxSlots = 1u << kIndexBits;
         static constexpr uint32_t kNoSlot = 0xFFFFFFFF;
 
         const gyro_allocator_t *allocator_ = nullptr;
@@ -52,7 +53,6 @@ namespace gyro::support {
         uint32_t npages_ = 0; ///< Entries actually in use.
         uint32_t nslots_ = 0; ///< npages_ * kPageSize, kept to spare a shift on lookup.
         uint32_t next_free_ = kNoSlot; ///< Head of the free list, threaded through the slots.
-        uint32_t max_slots_ = 1 << kIndexBits; ///< Ceiling: an index has to fit kIndexBits.
 
         /**
          * @brief Appends one page of requests, growing the directory if needed.
@@ -68,7 +68,7 @@ namespace gyro::support {
         bool Grow() {
             // Room for a whole page, not just for one slot. The subtraction is
             // deliberate: the equivalent addition could overflow.
-            if (this->nslots_ > this->max_slots_ - kPageSize)
+            if (this->nslots_ > kMaxSlots - kPageSize)
                 return false;
 
             if (this->npages_ == this->ndir_) {
