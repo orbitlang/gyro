@@ -12,6 +12,11 @@
 extern "C" {
 #endif
 
+typedef enum {
+    GYRO_DIR_IN,
+    GYRO_DIR_OUT
+} gyro_dir_t;
+
 /// Opaque resource registered with a loop.
 typedef struct GyroHandle gyro_handle_t;
 

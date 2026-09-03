@@ -60,8 +60,8 @@ static int Loop(Gyro *loop) {
     return GYRO_COMPLETED;
 }
 
-bool gyro::ProcessHandle(GyroHandle *handle, const HandleDirection direction) {
-    const auto *queue = direction == HandleDirection::OUT ? &handle->out : &handle->in;
+bool gyro::ProcessHandle(GyroHandle *handle, const gyro_dir_t direction) {
+    const auto *queue = direction == GYRO_DIR_OUT ? &handle->out : &handle->in;
 
     for (;;) {
         auto *request = queue->GetHead();
@@ -94,7 +94,7 @@ int gyro::Submit(GyroRequest *request, const long long timeout) {
         return GYRO_COMPLETED;
     }
 
-    auto *queue = request->direction == HandleDirection::OUT ? &request->handle->out : &request->handle->in;
+    auto *queue = request->direction == GYRO_DIR_OUT ? &request->handle->out : &request->handle->in;
 
     const auto was_idle = queue->GetHead() == nullptr;
 

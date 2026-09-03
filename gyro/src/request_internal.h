@@ -8,8 +8,6 @@
 #include <gyro/buf.h>
 #include <gyro/request.h>
 
-#include "hdirection.h"
-
 struct GyroRequest {
     gyro_t *loop;
 
@@ -54,7 +52,7 @@ struct GyroRequest {
     bool cancelled;
 
     /// Which queue of that handle holds it.
-    gyro::HandleDirection direction;
+    gyro_dir_t direction;
 };
 
 namespace gyro {
@@ -70,6 +68,9 @@ namespace gyro {
             uint64_t _opaque;
         };
     };
+
+    GyroRequest *NewRequest(GyroHandle *handle, gyro_dir_t direction, gyro_rq_op_cb cb_op,
+                            gyro_rq_user_cb cb_user, void *data);
 
     void CancelRequest(GyroRequest *request);
 } // namespace gyro

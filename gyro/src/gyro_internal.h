@@ -102,7 +102,7 @@ namespace gyro {
      * @return True when a request is still waiting and the handle has to be
      *         watched again.
      */
-    bool ProcessHandle(GyroHandle *handle, HandleDirection direction);
+    bool ProcessHandle(GyroHandle *handle, gyro_dir_t direction);
 
     /**
      * @brief Backend hook: waits for events and dispatches them.

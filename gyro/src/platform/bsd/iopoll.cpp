@@ -37,9 +37,9 @@ static int FlushChanges(Gyro *loop) {
     return GYRO_COMPLETED;
 }
 
-static int AppendChange(Gyro *loop, GyroHandle *handle, const HandleDirection direction) {
+static int AppendChange(Gyro *loop, GyroHandle *handle, const gyro_dir_t direction) {
     int filter = EVFILT_READ;
-    if (direction == HandleDirection::OUT)
+    if (direction == GYRO_DIR_OUT)
         filter = EVFILT_WRITE;
 
     if (loop->backend.nchanges == kMaxEvents) {
@@ -53,8 +53,8 @@ static int AppendChange(Gyro *loop, GyroHandle *handle, const HandleDirection di
     return GYRO_COMPLETED;
 }
 
-static void ReportFailToQueue(const GyroHandle *handle, const HandleDirection direction, const int status) {
-    const auto *queue = direction == HandleDirection::OUT ? &handle->out : &handle->in;
+static void ReportFailToQueue(const GyroHandle *handle, const gyro_dir_t direction, const int status) {
+    const auto *queue = direction == GYRO_DIR_OUT ? &handle->out : &handle->in;
 
     // gyro_op_complete() unlinks each request, so the head advances by itself.
     while (auto *request = queue->GetHead())
@@ -126,15 +126,15 @@ int gyro::IOPoll(Gyro *loop, const long long timeout) {
 
         auto *handle = (GyroHandle *) events[i].udata;
 
-        const auto direction = events[i].filter == EVFILT_WRITE ? HandleDirection::OUT : HandleDirection::IN;
+        const auto direction = events[i].filter == EVFILT_WRITE ? GYRO_DIR_OUT : GYRO_DIR_IN;
 
         if (events[i].flags & EV_ERROR) {
             const int status = ErrorToStatus((int) events[i].data);
 
             if (handle->state != HandleState::CLOSING) {
                 if (events[i].data == EBADF) {
-                    ReportFailToQueue(handle, HandleDirection::IN, status);
-                    ReportFailToQueue(handle, HandleDirection::OUT, status);
+                    ReportFailToQueue(handle, GYRO_DIR_IN, status);
+                    ReportFailToQueue(handle, GYRO_DIR_OUT, status);
 
                     continue;
                 }
@@ -145,7 +145,7 @@ int gyro::IOPoll(Gyro *loop, const long long timeout) {
             continue;
         }
 
-        if (direction == HandleDirection::OUT && (events[i].flags & EV_EOF)) {
+        if (direction == GYRO_DIR_OUT && (events[i].flags & EV_EOF)) {
             const int status = events[i].fflags != 0 ? ErrorToStatus((int) events[i].fflags) : GYRO_EPIPE;
 
             ReportFailToQueue(handle, direction, status);
