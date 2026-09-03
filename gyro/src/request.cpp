@@ -65,8 +65,7 @@ int gyro_request_cancel(const gyro_t *gyro, const gyro_request_t token) {
 
 void gyro_op_complete(gyro_op_t *op, const int status, const size_t transferred) {
     if (op->handle != nullptr) {
-        auto *queue = op->direction == GYRO_DIR_OUT ? &op->handle->out : &op->handle->in;
-
+        auto *queue = QueueFor(op->handle, op->direction);
         queue->Remove(op);
     }
 

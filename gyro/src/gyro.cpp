@@ -94,7 +94,7 @@ int gyro::Submit(GyroRequest *request, const long long timeout) {
         return GYRO_COMPLETED;
     }
 
-    auto *queue = request->direction == GYRO_DIR_OUT ? &request->handle->out : &request->handle->in;
+    auto *queue = QueueFor(request->handle, request->direction);
 
     const auto was_idle = queue->GetHead() == nullptr;
 

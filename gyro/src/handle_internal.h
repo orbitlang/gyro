@@ -37,4 +37,16 @@ struct GyroHandle {
     gyro::HandleState state = gyro::HandleState::ACTIVE;
 };
 
+namespace gyro {
+    template<typename T>
+    std::conditional_t<
+        std::is_const_v<std::remove_pointer_t<std::remove_reference_t<T> > >,
+        const support::Queue<GyroRequest>,
+        support::Queue<GyroRequest>
+    >
+    *QueueFor(T handle, const gyro_dir_t direction) {
+        return direction == GYRO_DIR_OUT ? &handle->out : &handle->in;
+    }
+} // namespace gyro
+
 #endif // !GYRO_HANDLE_INTERNAL_H_

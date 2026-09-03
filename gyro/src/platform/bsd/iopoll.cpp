@@ -54,7 +54,7 @@ static int AppendChange(Gyro *loop, GyroHandle *handle, const gyro_dir_t directi
 }
 
 static void ReportFailToQueue(const GyroHandle *handle, const gyro_dir_t direction, const int status) {
-    const auto *queue = direction == GYRO_DIR_OUT ? &handle->out : &handle->in;
+    const auto *queue = QueueFor(handle, direction);
 
     // gyro_op_complete() unlinks each request, so the head advances by itself.
     while (auto *request = queue->GetHead())
