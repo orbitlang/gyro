@@ -63,6 +63,22 @@ int gyro_request_cancel(const gyro_t *gyro, const gyro_request_t token) {
     return GYRO_COMPLETED;
 }
 
+int gyro_request_submit(gyro_handle_t *handle, void *data, const gyro_rq_op_cb cb_op, const gyro_rq_user_cb cb_user,
+                        gyro_request_t *out_token, const long long timeout, const gyro_dir_t direction) {
+    if (handle == nullptr || handle->gyro == nullptr)
+        return GYRO_EINVAL;
+
+    auto *req = NewRequest(handle, direction, cb_op, cb_user, data);
+    if (req == nullptr)
+        return GYRO_ENOMEM;
+
+    const auto status = Submit(req, out_token, timeout);
+    if (status != GYRO_COMPLETED)
+        return status;
+
+    return GYRO_PENDING;
+}
+
 void gyro_op_complete(gyro_op_t *op, const int status, const size_t transferred) {
     if (op->handle != nullptr) {
         auto *queue = QueueFor(op->handle, op->direction);

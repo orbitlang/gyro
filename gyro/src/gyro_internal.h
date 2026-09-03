@@ -138,6 +138,9 @@ namespace gyro {
      * its user callback never runs, because the caller has yet to be handed a
      * token it could recognize the operation by.
      *
+     * @param request The prepared request to submit to the loop.
+     * @param out_token Output parameter that receives the token identifying this
+     *                  operation, allowing the caller to reference or cancel it.
      * @param timeout Milliseconds from now, measured against the loop's notion
      *                of now rather than a fresh reading. On an operation it is
      *                a deadline, and anything not positive means it has none; on
@@ -146,7 +149,7 @@ namespace gyro {
      * @return GYRO_COMPLETED once the loop owns the request, or a negative
      *         status if the backend refused it.
      */
-    int Submit(GyroRequest *request, long long timeout);
+    int Submit(GyroRequest *request, gyro_request_t *out_token, long long timeout);
 
     /**
      * @brief Takes a finished request out of the loop and back into the store.

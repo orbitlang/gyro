@@ -81,9 +81,16 @@ bool gyro::ProcessHandle(GyroHandle *handle, const gyro_dir_t direction) {
     }
 }
 
-int gyro::Submit(GyroRequest *request, const long long timeout) {
+int gyro::Submit(GyroRequest *request, gyro_request_t *out_token, const long long timeout) {
     const auto timer_only = request->handle == nullptr;
     auto *loop = request->loop;
+
+    RequestIndex index{};
+    index.fields.generation = request->generation;
+    index.fields.index = request->index;
+
+    if (out_token != nullptr)
+        out_token->_opaque = index._opaque;
 
     if (timer_only) {
         request->timer.timeout = loop->time + timeout;
@@ -117,6 +124,9 @@ int gyro::Submit(GyroRequest *request, const long long timeout) {
         queue->Remove(request);
 
         FinishRequest(loop, request);
+
+        if (out_token != nullptr)
+            *out_token = gyro_request_invalid();
     }
 
     return status;
