@@ -13,6 +13,17 @@
 extern "C" {
 #endif
 
+/**
+ * @brief Where every allocation gyro makes goes through.
+ *
+ * gyro never calls malloc or new on its own, so an embedder can account for its
+ * memory, put it in an arena, or cap it. The hooks must behave like their
+ * standard counterparts: alloc returns NULL rather than aborting on failure,
+ * and free tolerates NULL.
+ *
+ * @p ctx is passed back to both untouched, and is also the natural place to put
+ * a lock when the allocator is reached from more than one thread.
+ */
 typedef struct {
     void *(*alloc)(size_t size, void *ctx);
 
@@ -22,16 +33,10 @@ typedef struct {
 } gyro_allocator_t;
 
 /**
- * @brief Retrieves the default memory allocator.
+ * @brief The allocator used when none is given.
  *
- * This function provides access to the default memory allocator, which is
- * responsible for managing memory allocation and deallocation. The default
- * allocator uses standard library functions (`malloc` and `free`)
- * for allocating and freeing memory. The function returns a pointer to a
- * statically-defined `gyro_allocator_t` structure that describes the default
- * allocator's behavior.
- *
- * @return A pointer to the default `gyro_allocator_t` instance.
+ * malloc and free, with no context. Statically allocated, so the pointer is
+ * always valid and needs no cleanup.
  */
 GYRO_API const gyro_allocator_t *gyro_default_allocator(void);
 

@@ -12,9 +12,15 @@
 extern "C" {
 #endif
 
+/**
+ * @brief Which of a handle's two streams an operation belongs to.
+ *
+ * Each direction has its own queue and is driven independently, so a read and a
+ * write on one handle neither wait for nor block each other.
+ */
 typedef enum {
-    GYRO_DIR_IN,
-    GYRO_DIR_OUT
+    GYRO_DIR_IN, /* arriving: reads, and connections being accepted */
+    GYRO_DIR_OUT /* leaving: writes, and connections being made */
 } gyro_dir_t;
 
 /// Opaque resource registered with a loop.

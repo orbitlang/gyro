@@ -5,6 +5,14 @@
 #ifndef GYRO_GYRO_H_
 #define GYRO_GYRO_H_
 
+/**
+ * @file gyro.h
+ * @brief Umbrella header: includes the whole public API.
+ *
+ * Convenience only. Nothing lives here, and a caller that wants to depend on
+ * less can include the individual headers instead.
+ */
+
 #include <gyro/allocator.h>
 #include <gyro/error.h>
 #include <gyro/handle.h>
