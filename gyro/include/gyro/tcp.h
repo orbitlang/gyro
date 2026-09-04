@@ -13,6 +13,7 @@
 #include <sys/socket.h>
 #endif
 
+#include <gyro/buf.h>
 #include <gyro/export.h>
 #include <gyro/loop.h>
 #include <gyro/request.h>
@@ -98,6 +99,34 @@ GYRO_API int gyro_tcp_connect(gyro_tcp_t *tcp, const struct sockaddr *addr, size
  * @return GYRO_COMPLETED, or a negative status.
  */
 GYRO_API int gyro_tcp_listen(const gyro_tcp_t *tcp, int backlog);
+
+/**
+ * @brief Reads whatever has arrived.
+ *
+ * Short by design: it reports as soon as one byte is there, up to the room the
+ * regions offer, and never waits for them to fill. Reading a known number of
+ * bytes is a layer on top, built by reading again — not something the loop can
+ * do on the caller's behalf without holding data it has already been given.
+ *
+ * GYRO_EOF says the peer shut the connection down cleanly. It is an event, not
+ * a failure, and it is the only way to learn that no more bytes are coming.
+ *
+ * Reads on one handle are served in the order they were submitted, so a second
+ * read never takes bytes belonging to the first.
+ *
+ * @param bufs Regions to fill, in order. They and the array naming them must
+ *             stay valid, and unmodified, until the operation reports.
+ * @param timeout Milliseconds before the read is given up on, or 0 for none.
+ * @param cb Reports the outcome. Not called when GYRO_COMPLETED is returned.
+ * @param token Receives the token naming the operation, or NULL. Set to an
+ *              invalid token unless GYRO_PENDING is returned.
+ * @param transferred Receives the byte count when the read is satisfied at
+ *                    once, or NULL. Set to 0 in every other case.
+ * @return GYRO_PENDING, GYRO_COMPLETED when data was already waiting, or a
+ *         negative status such as GYRO_EOF.
+ */
+GYRO_API int gyro_tcp_read(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbufs, long long timeout,
+                           gyro_rq_user_cb cb, void *data, gyro_request_t *token, size_t *transferred);
 
 /**
  * @brief Creates a TCP handle owned by the loop.

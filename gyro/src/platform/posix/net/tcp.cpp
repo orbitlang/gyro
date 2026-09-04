@@ -6,11 +6,11 @@
 
 #include <fcntl.h>
 #include <sys/socket.h>
+#include <sys/uio.h>
 #include <unistd.h>
 
 #include <gyro/error.h>
 #include <gyro/tcp.h>
-#include <sys/stat.h>
 
 #include "error_internal.h"
 #include "gyro_internal.h"
@@ -51,33 +51,6 @@ static bool ConfigureSocket(const int fd) {
     return true;
 }
 
-/**
- * @brief Opens the socket a handle has been waiting for.
- *
- * The family is only known once an address turns up, which is why the handle
- * outlives more than one attempt at this.
- */
-static int OpenSocket(GyroTcp *tcp, const int family) {
-    if (tcp->handle.handle != gyro::kInvalidSocket)
-        return GYRO_COMPLETED;
-
-    const int fd = socket(family, SOCK_STREAM, 0);
-    if (fd < 0)
-        return gyro::ErrorToStatus(errno);
-
-    if (!ConfigureSocket(fd)) {
-        const int error = gyro::ErrorToStatus(errno);
-
-        close(fd);
-
-        return error;
-    }
-
-    tcp->handle.handle = fd;
-
-    return GYRO_COMPLETED;
-}
-
 static int AcceptOnce(const int handle, GyroHandle *peer) {
     do {
         const int fd = accept(handle, nullptr, nullptr);
@@ -110,6 +83,45 @@ static int AcceptOnce(const int handle, GyroHandle *peer) {
     } while (true);
 }
 
+/**
+ * @brief Opens the socket a handle has been waiting for.
+ *
+ * The family is only known once an address turns up, which is why the handle
+ * outlives more than one attempt at this.
+ */
+static int OpenSocket(GyroTcp *tcp, const int family) {
+    if (tcp->handle.handle != gyro::kInvalidSocket)
+        return GYRO_COMPLETED;
+
+    const int fd = socket(family, SOCK_STREAM, 0);
+    if (fd < 0)
+        return gyro::ErrorToStatus(errno);
+
+    if (!ConfigureSocket(fd)) {
+        const int error = gyro::ErrorToStatus(errno);
+
+        close(fd);
+
+        return error;
+    }
+
+    tcp->handle.handle = fd;
+
+    return GYRO_COMPLETED;
+}
+
+static ssize_t ReadOnce(const int fd, const gyro_buf_t *bufs, unsigned int nbufs) {
+    if (nbufs > (unsigned int) IOV_MAX)
+        nbufs = IOV_MAX;
+
+    ssize_t n;
+    do
+        n = readv(fd, (const iovec *) bufs, (int) nbufs);
+    while (n < 0 && errno == EINTR);
+
+    return n;
+}
+
 static gyro_cb_status_t TcpAcceptOp(gyro_handle_t *handle, gyro_op_t *op) {
     const int status = AcceptOnce(handle->handle, op->io.peer);
     if (status == GYRO_PENDING)
@@ -138,6 +150,28 @@ static gyro_cb_status_t TcpConnectOp(gyro_handle_t *handle, gyro_op_t *op) {
     gyro_op_complete(op, GYRO_COMPLETED, 0);
 
     return GYRO_CB_SUCCESS;
+}
+
+static gyro_cb_status_t TcpReadOp(gyro_handle_t *handle, gyro_op_t *op) {
+    const ssize_t n = ReadOnce(handle->handle, op->io.buf, op->io.nbufs);
+    if (n == 0) {
+        gyro_op_complete(op, GYRO_EOF, 0);
+
+        return GYRO_CB_SUCCESS;
+    }
+
+    if (n > 0) {
+        gyro_op_complete(op, GYRO_COMPLETED, (size_t) n);
+
+        return GYRO_CB_SUCCESS;
+    }
+
+    if (errno == EAGAIN || errno == EWOULDBLOCK)
+        return GYRO_CB_RETRY;
+
+    gyro_op_complete(op, gyro::ErrorToStatus(errno), 0);
+
+    return GYRO_CB_FAILURE;
 }
 
 // ---------------------------------------------------------------------------
@@ -259,6 +293,52 @@ int gyro_tcp_listen(const gyro_tcp_t *tcp, const int backlog) {
         return gyro::ErrorToStatus(errno);
 
     return GYRO_COMPLETED;
+}
+
+GYRO_API int gyro_tcp_read(gyro_tcp_t *tcp, gyro_buf_t *bufs, const unsigned int nbufs, const long long timeout,
+                           const gyro_rq_user_cb cb, void *data, gyro_request_t *token, size_t *transferred) {
+    if (token != nullptr)
+        *token = gyro_request_invalid();
+
+    if (transferred != nullptr)
+        *transferred = 0;
+
+    if (bufs == nullptr || nbufs == 0)
+        return GYRO_EINVAL;
+
+    int status = CheckSubmittable(tcp);
+    if (status != GYRO_COMPLETED)
+        return status;
+
+    if (gyro_handle_pending((GyroHandle *) tcp, GYRO_DIR_IN) == 0) {
+        const ssize_t n = ReadOnce(tcp->handle.handle, bufs, nbufs);
+        if (n == 0)
+            return GYRO_EOF;
+
+        if (n > 0) {
+            if (transferred != nullptr)
+                *transferred = (size_t) n;
+
+            return GYRO_COMPLETED;
+        }
+
+        if (errno != EAGAIN && errno != EWOULDBLOCK)
+            return gyro::ErrorToStatus(errno);
+    }
+
+    GyroRequest *request;
+    status = gyro::NewRequest((GyroHandle *) tcp, GYRO_DIR_IN, TcpReadOp, cb, data, &request);
+    if (status != GYRO_COMPLETED)
+        return status;
+
+    request->io.buf = bufs;
+    request->io.nbufs = nbufs;
+
+    status = gyro::Submit(request, token, timeout);
+    if (status != GYRO_COMPLETED)
+        return status;
+
+    return GYRO_PENDING;
 }
 
 gyro_tcp_t *gyro_tcp_new(gyro_t *gyro) {
