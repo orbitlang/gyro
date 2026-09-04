@@ -15,6 +15,7 @@
 
 #include <gyro/export.h>
 #include <gyro/loop.h>
+#include <gyro/request.h>
 
 /// Lets other sockets bind the same address, as SO_REUSEADDR does.
 #define GYRO_TCP_REUSEADDR 0x01
@@ -32,43 +33,47 @@ extern "C" {
 typedef struct GyroTcp gyro_tcp_t;
 
 /**
- * @brief Binds a TCP handle to a specified address.
+ * @brief Takes the next incoming connection.
  *
- * This function associates a TCP handle with a specified address and port for future
- * operations, such as listening for incoming connections. The address provided must
- * match the requirements of the underlying platform and protocol family.
+ * The connection lands in @p client, which the caller creates beforehand with
+ * gyro_tcp_new() and owns from then on — including when the operation fails, in
+ * which case @p client is untouched and can be reused or closed. Handing it in
+ * rather than receiving it back is what lets the same call work on a completion
+ * port, where the socket has to exist before the accept is posted, and it keeps
+ * the callback signature the same as every other operation's.
  *
- * The function performs various checks, including ensuring that the TCP handle is
- * in an active state and the provided address and length parameters are valid.
- * Additionally, it optionally enables the reuse of local addresses based on the
- * flags provided.
+ * @p client must stay alive until the operation reports, exactly as a buffer
+ * would.
  *
- * @param tcp A pointer to a gyro_tcp_t instance representing the TCP handle to bind.
- * @param addr A pointer to a sockaddr structure specifying the address to bind the handle to.
- * @param addrlen The size of the address structure.
- * @param flags A set of flags controlling the binding behavior. The GYRO_TCP_REUSEADDR
- *              flag enables reuse of local addresses.
- * @return GYRO_COMPLETED on success, or a negative gyro_errno_t value indicating the error.
- *         Errors include GYRO_EINVAL for invalid arguments, GYRO_EBADF if the handle is
- *         not active, and other platform-specific errors converted to gyro codes.
+ * @param timeout Milliseconds to wait for a connection, or 0 to wait
+ *                indefinitely.
+ * @param cb Reports the outcome. Its `transferred` is always 0.
+ * @param out_token Receives the token naming the operation, or NULL.
+ * @return GYRO_PENDING, GYRO_COMPLETED if a connection was already waiting, or
+ *         a negative status.
+ */
+GYRO_API int gyro_tcp_accept(gyro_tcp_t *tcp, gyro_tcp_t *client, long long timeout,
+                             gyro_rq_user_cb cb, void *data, gyro_request_t *out_token);
+
+/**
+ * @brief Binds the socket to a local address.
+ *
+ * Opens the descriptor if it does not exist yet: the address is what tells gyro
+ * which family to open it for.
+ *
+ * @param flags Zero, or GYRO_TCP_REUSEADDR.
+ * @return GYRO_COMPLETED, or a negative status.
  */
 GYRO_API int gyro_tcp_bind(gyro_tcp_t *tcp, const struct sockaddr *addr, size_t addrlen, unsigned int flags);
 
 /**
- * @brief Listens for incoming TCP connections on the given socket.
+ * @brief Starts accepting connections on a bound socket.
  *
- * This function enables the socket to accept incoming connection requests,
- * setting it into a listening state.
+ * Only marks the socket as listening; connections are taken one at a time with
+ * gyro_tcp_accept(). Synchronous, because the kernel answers at once.
  *
- * @param tcp A pointer to a `gyro_tcp_t` structure representing the socket.
- *            The socket must have been initialized and bound to an address before calling this function.
- * @param backlog The maximum length of the queue of pending connections. This value defines
- *                how many connection requests can be queued before connections are refused.
- * @return
- *         - GYRO_COMPLETED on success.
- *         - GYRO_EINVAL if the provided tcp is null or if the socket handle is invalid.
- *         - GYRO_EBADF if the socket is not in an active state.
- *         - A specific negative error code corresponding to platform error if `listen` fails.
+ * @param backlog How many connections the kernel may hold before refusing more.
+ * @return GYRO_COMPLETED, or a negative status.
  */
 GYRO_API int gyro_tcp_listen(const gyro_tcp_t *tcp, int backlog);
 

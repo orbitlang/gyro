@@ -10,6 +10,7 @@
 
 #include <gyro/error.h>
 #include <gyro/tcp.h>
+#include <sys/stat.h>
 
 #include "error_internal.h"
 #include "gyro_internal.h"
@@ -77,11 +78,100 @@ static int OpenSocket(GyroTcp *tcp, const int family) {
     return GYRO_COMPLETED;
 }
 
+static int AcceptOnce(const int handle, GyroHandle *peer) {
+    do {
+        const int fd = accept(handle, nullptr, nullptr);
+        if (fd < 0) {
+            if (errno == EINTR)
+                continue;
+
+            // The peer gave up between the kernel queuing the connection and us
+            // taking it. Nothing failed on our side, so try the one behind it.
+            if (errno == ECONNABORTED)
+                continue;
+
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+                return GYRO_PENDING;
+
+            return gyro::ErrorToStatus(errno);
+        }
+
+        if (!ConfigureSocket(fd)) {
+            const int status = gyro::ErrorToStatus(errno);
+
+            close(fd);
+
+            return status;
+        }
+
+        peer->handle = fd;
+
+        return GYRO_COMPLETED;
+    } while (true);
+}
+
+static gyro_cb_status_t TcpAcceptOp(gyro_handle_t *handle, gyro_op_t *op) {
+    const int status = AcceptOnce(handle->handle, op->io.peer);
+    if (status == GYRO_PENDING)
+        return GYRO_CB_RETRY;
+
+    gyro_op_complete(op, status, 0);
+
+    return status == GYRO_COMPLETED ? GYRO_CB_SUCCESS : GYRO_CB_FAILURE;
+}
+
+// ---------------------------------------------------------------------------
+// Submission
+// ---------------------------------------------------------------------------
+
+static int CheckSubmittable(const GyroTcp *tcp) {
+    if (tcp == nullptr)
+        return GYRO_EINVAL;
+
+    if (tcp->handle.state != gyro::HandleState::ACTIVE)
+        return GYRO_EBADF;
+
+    if (tcp->handle.handle == gyro::kInvalidSocket)
+        return GYRO_EINVAL;
+
+    return GYRO_COMPLETED;
+}
+
 // ---------------------------------------------------------------------------
 // Public
 // ---------------------------------------------------------------------------
 
 extern "C" {
+int gyro_tcp_accept(gyro_tcp_t *tcp, gyro_tcp_t *client, const long long timeout,
+                    const gyro_rq_user_cb cb, void *data, gyro_request_t *out_token) {
+    if (client == nullptr || client->handle.handle != gyro::kInvalidSocket)
+        return GYRO_EINVAL;
+
+    auto status = CheckSubmittable(tcp);
+    if (status != GYRO_COMPLETED)
+        return status;
+
+    if (gyro_handle_pending((GyroHandle *) tcp, GYRO_DIR_IN) == 0) {
+        status = AcceptOnce(tcp->handle.handle, (GyroHandle *) client);
+        if (status != GYRO_PENDING)
+            return status;
+    }
+
+    GyroRequest *req;
+
+    status = gyro::NewRequest((GyroHandle *) tcp, GYRO_DIR_IN, TcpAcceptOp, cb, data, &req);
+    if (status != GYRO_COMPLETED)
+        return status;
+
+    req->io.peer = (GyroHandle *) client;
+
+    status = gyro::Submit(req, out_token, timeout);
+    if (status != GYRO_COMPLETED)
+        return status;
+
+    return GYRO_PENDING;
+}
+
 int gyro_tcp_bind(gyro_tcp_t *tcp, const sockaddr *addr, const size_t addrlen, const unsigned int flags) {
     if (tcp == nullptr || addr == nullptr || addrlen == 0)
         return GYRO_EINVAL;

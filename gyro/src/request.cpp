@@ -10,17 +10,20 @@
 
 using namespace gyro;
 
-GyroRequest *gyro::NewRequest(GyroHandle *handle, const gyro_dir_t direction, const gyro_rq_op_cb cb_op,
-                              const gyro_rq_user_cb cb_user, void *data) {
+int gyro::NewRequest(GyroHandle *handle, gyro_dir_t direction, gyro_rq_op_cb cb_op,
+                     gyro_rq_user_cb cb_user, void *data, GyroRequest **out_request) {
     if (handle == nullptr || handle->gyro == nullptr)
-        return nullptr;
+        return GYRO_EINVAL;
+
+    if (handle->state == HandleState::CLOSING)
+        return GYRO_EBADF;
 
     RequestIndex index{};
 
     auto *loop = handle->gyro;
     auto *req = loop->requests.Acquire(index);
     if (req == nullptr)
-        return nullptr;
+        return GYRO_ENOMEM;
 
     req->loop = loop;
     req->handle = handle;
@@ -29,7 +32,9 @@ GyroRequest *gyro::NewRequest(GyroHandle *handle, const gyro_dir_t direction, co
     req->cb_user = cb_user;
     req->data = data;
 
-    return req;
+    *out_request = req;
+
+    return GYRO_COMPLETED;
 }
 
 void gyro::CancelRequest(GyroRequest *request) {
@@ -65,14 +70,12 @@ int gyro_request_cancel(const gyro_t *gyro, const gyro_request_t token) {
 
 int gyro_request_submit(gyro_handle_t *handle, void *data, const gyro_rq_op_cb cb_op, const gyro_rq_user_cb cb_user,
                         gyro_request_t *out_token, const long long timeout, const gyro_dir_t direction) {
-    if (handle == nullptr || handle->gyro == nullptr)
-        return GYRO_EINVAL;
+    GyroRequest *req;
+    auto status = NewRequest(handle, direction, cb_op, cb_user, data, &req);
+    if (status != GYRO_COMPLETED)
+        return status;
 
-    auto *req = NewRequest(handle, direction, cb_op, cb_user, data);
-    if (req == nullptr)
-        return GYRO_ENOMEM;
-
-    const auto status = Submit(req, out_token, timeout);
+    status = Submit(req, out_token, timeout);
     if (status != GYRO_COMPLETED)
         return status;
 

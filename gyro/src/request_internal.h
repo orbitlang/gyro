@@ -43,7 +43,12 @@ struct GyroRequest {
     } timer;
 
     struct {
-        gyro_buf_t *buf;
+        union {
+            gyro_buf_t *buf;
+
+            GyroHandle *peer;
+        };
+
         unsigned int nbufs;
 
         uint64_t transferred;
@@ -69,8 +74,8 @@ namespace gyro {
         };
     };
 
-    GyroRequest *NewRequest(GyroHandle *handle, gyro_dir_t direction, gyro_rq_op_cb cb_op,
-                            gyro_rq_user_cb cb_user, void *data);
+    int NewRequest(GyroHandle *handle, gyro_dir_t direction, gyro_rq_op_cb cb_op,
+                   gyro_rq_user_cb cb_user, void *data, GyroRequest **out_request);
 
     void CancelRequest(GyroRequest *request);
 } // namespace gyro
