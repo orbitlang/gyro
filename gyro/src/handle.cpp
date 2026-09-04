@@ -12,7 +12,11 @@ gyro_t *gyro_handle_loop(const gyro_handle_t *handle) {
     return handle->gyro;
 }
 
-void gyro_close(gyro_handle_t *handle, const gyro_close_cb cb) {
+unsigned int gyro_handle_pending(const gyro_handle_t *handle, const gyro_dir_t direction) {
+    return gyro::QueueFor(handle, direction)->Count();
+}
+
+void gyro_handle_close(gyro_handle_t *handle, const gyro_close_cb cb) {
     auto *h = handle;
 
     if (h->state == gyro::HandleState::CLOSING)

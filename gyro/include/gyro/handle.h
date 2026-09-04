@@ -44,6 +44,19 @@ typedef void (*gyro_close_cb)(gyro_handle_t *handle);
 GYRO_API gyro_t *gyro_handle_loop(const gyro_handle_t *handle);
 
 /**
+ * @brief Returns how many operations are waiting in one direction.
+ *
+ * Zero is what lets a submit try the syscall directly instead of queueing:
+ * with something already waiting, going direct would take bytes belonging to
+ * the operation ahead of it.
+ *
+ * @param handle Handle to inspect.
+ * @param direction Which of its two queues to count.
+ * @return The number of operations waiting, zero when the direction is idle.
+ */
+GYRO_API unsigned int gyro_handle_pending(const gyro_handle_t *handle, gyro_dir_t direction);
+
+/**
  * @brief Closes the handle.
  *
  * Returns immediately: pending operations are cancelled first, and @p cb is
@@ -52,7 +65,7 @@ GYRO_API gyro_t *gyro_handle_loop(const gyro_handle_t *handle);
  *
  * @param cb Invoked when the handle is gone. May be NULL.
  */
-GYRO_API void gyro_close(gyro_handle_t *handle, gyro_close_cb cb);
+GYRO_API void gyro_handle_close(gyro_handle_t *handle, gyro_close_cb cb);
 
 /**
  * @brief Returns the user data attached to the handle.
