@@ -120,6 +120,26 @@ static gyro_cb_status_t TcpAcceptOp(gyro_handle_t *handle, gyro_op_t *op) {
     return status == GYRO_COMPLETED ? GYRO_CB_SUCCESS : GYRO_CB_FAILURE;
 }
 
+static gyro_cb_status_t TcpConnectOp(gyro_handle_t *handle, gyro_op_t *op) {
+    // Writability only says the attempt is over, not that it succeeded: the
+    // outcome is parked on the socket and this is the only way to read it.
+    int error = 0;
+    socklen_t len = sizeof(error);
+
+    if (getsockopt(handle->handle, SOL_SOCKET, SO_ERROR, &error, &len) < 0)
+        error = errno;
+
+    if (error != 0) {
+        gyro_op_complete(op, gyro::ErrorToStatus(error), 0);
+
+        return GYRO_CB_FAILURE;
+    }
+
+    gyro_op_complete(op, GYRO_COMPLETED, 0);
+
+    return GYRO_CB_SUCCESS;
+}
+
 // ---------------------------------------------------------------------------
 // Submission
 // ---------------------------------------------------------------------------
@@ -144,6 +164,9 @@ static int CheckSubmittable(const GyroTcp *tcp) {
 extern "C" {
 int gyro_tcp_accept(gyro_tcp_t *tcp, gyro_tcp_t *client, const long long timeout,
                     const gyro_rq_user_cb cb, void *data, gyro_request_t *out_token) {
+    if (out_token != nullptr)
+        *out_token = gyro_request_invalid();
+
     if (client == nullptr || client->handle.handle != gyro::kInvalidSocket)
         return GYRO_EINVAL;
 
@@ -194,6 +217,32 @@ int gyro_tcp_bind(gyro_tcp_t *tcp, const sockaddr *addr, const size_t addrlen, c
         return gyro::ErrorToStatus(errno);
 
     return GYRO_COMPLETED;
+}
+
+int gyro_tcp_connect(gyro_tcp_t *tcp, const sockaddr *addr, const size_t addrlen, const long long timeout,
+                     const gyro_rq_user_cb cb, void *data, gyro_request_t *out_token) {
+    if (out_token != nullptr)
+        *out_token = gyro_request_invalid();
+
+    if (tcp == nullptr || addr == nullptr || addrlen == 0)
+        return GYRO_EINVAL;
+
+    if (tcp->handle.state != gyro::HandleState::ACTIVE)
+        return GYRO_EBADF;
+
+    const auto status = OpenSocket(tcp, addr->sa_family);
+    if (status != GYRO_COMPLETED)
+        return status;
+
+    do {
+        if (connect(tcp->handle.handle, addr, (socklen_t) addrlen) == 0)
+            return GYRO_COMPLETED;
+    } while (errno == EINTR);
+
+    if (errno != EINPROGRESS && errno != EALREADY)
+        return gyro::ErrorToStatus(errno);
+
+    return gyro_request_submit((GyroHandle *) tcp, data, TcpConnectOp, cb, out_token, timeout, GYRO_DIR_OUT);
 }
 
 int gyro_tcp_listen(const gyro_tcp_t *tcp, const int backlog) {

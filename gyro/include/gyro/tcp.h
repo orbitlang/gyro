@@ -67,6 +67,28 @@ GYRO_API int gyro_tcp_accept(gyro_tcp_t *tcp, gyro_tcp_t *client, long long time
 GYRO_API int gyro_tcp_bind(gyro_tcp_t *tcp, const struct sockaddr *addr, size_t addrlen, unsigned int flags);
 
 /**
+ * @brief Connects to a peer.
+ *
+ * Opens the descriptor if it does not exist yet, which is the usual case: a
+ * handle straight from gyro_tcp_new() has no socket, and the address is what
+ * says which family to open it for.
+ *
+ * @param addr Peer to reach. Only read for the duration of the call.
+ * @param timeout Milliseconds to wait, or 0 to wait as long as the OS does.
+ *                A connection is not established any faster by giving up on it
+ *                sooner, so this is about how long the caller is prepared to
+ *                block, not about the network.
+ * @param cb Reports the outcome. Its `transferred` is always 0.
+ * @param out_token Receives the token naming the operation, or NULL. Set to an
+ *                  invalid token unless GYRO_PENDING is returned.
+ * @return GYRO_PENDING, GYRO_COMPLETED when the connection was established at
+ *         once — which happens over loopback — or a negative status such as
+ *         GYRO_ECONNREFUSED.
+ */
+GYRO_API int gyro_tcp_connect(gyro_tcp_t *tcp, const struct sockaddr *addr, size_t addrlen, long long timeout,
+                              gyro_rq_user_cb cb, void *data, gyro_request_t *out_token);
+
+/**
  * @brief Starts accepting connections on a bound socket.
  *
  * Only marks the socket as listening; connections are taken one at a time with
