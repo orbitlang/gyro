@@ -129,6 +129,32 @@ GYRO_API int gyro_tcp_read(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbufs
                            gyro_rq_user_cb cb, void *data, gyro_request_t *token, size_t *transferred);
 
 /**
+ * @brief Writes data to a TCP connection.
+ *
+ * This function attempts to send data from the provided buffers over the TCP connection.
+ * If the data cannot be immediately written (e.g., due to send buffer limitations),
+ * it will queue the operation for asynchronous execution.
+ *
+ * @param tcp A pointer to the TCP connection object.
+ * @param bufs An array of buffers containing the data to write.
+ * @param nbufs The number of buffers in the array.
+ * @param timeout The maximum duration (in milliseconds) to wait for completing the operation.
+ *                If set to 0, the operation is immediate without waiting.
+ * @param cb An optional callback function to be invoked upon the completion of the operation.
+ *           If `nullptr`, no callback will be used.
+ * @param data A user-defined pointer to pass additional data to the callback function.
+ * @param token A pointer to a request token, which will be assigned a unique identifier
+ *              for the operation. If `nullptr`, no token will be returned.
+ * @param transferred A pointer to a variable where the number of bytes successfully written
+ *                    will be stored. If `nullptr`, this information will not be returned.
+ * @return Returns GYRO_COMPLETED if the data is written completely and immediately.
+ *         Returns GYRO_PENDING if the write operation is queued for asynchronous completion.
+ *         Returns an error code (e.g., GYRO_EINVAL) if an invalid input or other error occurs.
+ */
+GYRO_API int gyro_tcp_write(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbufs, long long timeout,
+                            gyro_rq_user_cb cb, void *data, gyro_request_t *token, size_t *transferred);
+
+/**
  * @brief Creates a TCP handle owned by the loop.
  *
  * No socket exists yet: the address family is only known at bind or connect

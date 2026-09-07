@@ -21,6 +21,41 @@ struct GyroTcp {
 };
 
 // ---------------------------------------------------------------------------
+// Transfers
+// ---------------------------------------------------------------------------
+
+/// Charges @p n transferred bytes against the regions, oldest first.
+static void AdvanceBufs(gyro_buf_t **bufs, unsigned int *nbufs, size_t *offset, size_t n) {
+    while (n > 0 && *nbufs > 0) {
+        const auto left = (*bufs)->len - *offset;
+
+        if (n < left) {
+            *offset += n;
+
+            return;
+        }
+
+        n -= left;
+
+        (*bufs)++;
+        (*nbufs)--;
+
+        *offset = 0;
+    }
+}
+
+/// Drops regions that have nothing left in them, so the array always starts on
+/// real work.
+static void SkipEmpty(gyro_buf_t **bufs, unsigned int *nbufs, size_t *offset) {
+    while (*nbufs > 0 && ((*bufs)->len - *offset) == 0) {
+        (*bufs)++;
+        (*nbufs)--;
+
+        *offset = 0;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Sockets
 // ---------------------------------------------------------------------------
 
@@ -122,6 +157,35 @@ static ssize_t ReadOnce(const int fd, const gyro_buf_t *bufs, unsigned int nbufs
     return n;
 }
 
+static ssize_t WriteOnce(const int fd, gyro_buf_t *bufs, unsigned int nbufs, const size_t offset) {
+    if (nbufs > (unsigned int) IOV_MAX)
+        nbufs = IOV_MAX;
+
+    auto b_saved = bufs[0];
+
+    bufs[0].base += offset;
+    bufs[0].len -= offset;
+
+    msghdr msg{};
+
+    msg.msg_iov = (iovec *) bufs;
+    msg.msg_iovlen = (int) nbufs;
+
+    int flags = 0;
+#if defined(MSG_NOSIGNAL)
+    flags |= MSG_NOSIGNAL;
+#endif
+
+    ssize_t n;
+    do
+        n = sendmsg(fd, &msg, flags);
+    while (n < 0 && errno == EINTR);
+
+    bufs[0] = b_saved;
+
+    return n;
+}
+
 static gyro_cb_status_t TcpAcceptOp(gyro_handle_t *handle, gyro_op_t *op) {
     const int status = AcceptOnce(handle->handle, op->io.peer);
     if (status == GYRO_PENDING)
@@ -172,6 +236,32 @@ static gyro_cb_status_t TcpReadOp(gyro_handle_t *handle, gyro_op_t *op) {
     gyro_op_complete(op, gyro::ErrorToStatus(errno), 0);
 
     return GYRO_CB_FAILURE;
+}
+
+static gyro_cb_status_t TcpWriteOp(gyro_handle_t *handle, gyro_op_t *op) {
+    do {
+        SkipEmpty(&op->io.buf, &op->io.nbufs, &op->io.offset);
+
+        if (op->io.nbufs == 0) {
+            gyro_op_complete(op, GYRO_COMPLETED, op->io.transferred);
+
+            return GYRO_CB_SUCCESS;
+        }
+
+        const ssize_t n = WriteOnce(handle->handle, op->io.buf, op->io.nbufs, op->io.offset);
+        if (n < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+                return GYRO_CB_RETRY;
+
+            gyro_op_complete(op, gyro::ErrorToStatus(errno), op->io.transferred);
+
+            return GYRO_CB_FAILURE;
+        }
+
+        op->io.transferred += (size_t) n;
+
+        AdvanceBufs(&op->io.buf, &op->io.nbufs, &op->io.offset, (size_t) n);
+    } while (true);
 }
 
 // ---------------------------------------------------------------------------
@@ -333,6 +423,66 @@ GYRO_API int gyro_tcp_read(gyro_tcp_t *tcp, gyro_buf_t *bufs, const unsigned int
 
     request->io.buf = bufs;
     request->io.nbufs = nbufs;
+
+    status = gyro::Submit(request, token, timeout);
+    if (status != GYRO_COMPLETED)
+        return status;
+
+    return GYRO_PENDING;
+}
+
+GYRO_API int gyro_tcp_write(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbufs, long long timeout,
+                            gyro_rq_user_cb cb, void *data, gyro_request_t *token, size_t *transferred) {
+    if (token != nullptr)
+        *token = gyro_request_invalid();
+
+    if (transferred != nullptr)
+        *transferred = 0;
+
+    if (bufs == nullptr || nbufs == 0)
+        return GYRO_EINVAL;
+
+    int status = CheckSubmittable(tcp);
+    if (status != GYRO_COMPLETED)
+        return status;
+
+    size_t offset = 0;
+    size_t sent = 0;
+
+    if (gyro_handle_pending((GyroHandle *) tcp, GYRO_DIR_OUT) == 0) {
+        do {
+            SkipEmpty(&bufs, &nbufs, &offset);
+
+            if (nbufs == 0) {
+                if (transferred != nullptr)
+                    *transferred = sent;
+
+                return GYRO_COMPLETED;
+            }
+
+            const auto n = WriteOnce(tcp->handle.handle, bufs, nbufs, offset);
+            if (n < 0) {
+                if (errno != EAGAIN && errno != EWOULDBLOCK)
+                    return gyro::ErrorToStatus(errno);
+
+                break;
+            }
+
+            sent += (size_t) n;
+
+            AdvanceBufs(&bufs, &nbufs, &offset, (size_t) n);
+        } while (true);
+    }
+
+    GyroRequest *request;
+    status = gyro::NewRequest((GyroHandle *) tcp, GYRO_DIR_OUT, TcpWriteOp, cb, data, &request);
+    if (status != GYRO_COMPLETED)
+        return status;
+
+    request->io.buf = bufs;
+    request->io.nbufs = nbufs;
+    request->io.offset = offset;
+    request->io.transferred = sent;
 
     status = gyro::Submit(request, token, timeout);
     if (status != GYRO_COMPLETED)

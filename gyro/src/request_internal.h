@@ -51,6 +51,8 @@ struct GyroRequest {
 
         unsigned int nbufs;
 
+        size_t offset;
+
         uint64_t transferred;
     } io;
 
