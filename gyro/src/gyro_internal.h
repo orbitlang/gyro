@@ -107,6 +107,7 @@ namespace gyro {
     /**
      * @brief Backend hook: waits for events and dispatches them.
      *
+     * @param loop The event loop instance to poll for events.
      * @param timeout Milliseconds to block for, or a negative value to block
      *                until something happens.
      */

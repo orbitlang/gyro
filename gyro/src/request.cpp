@@ -10,8 +10,8 @@
 
 using namespace gyro;
 
-int gyro::NewRequest(GyroHandle *handle, gyro_dir_t direction, gyro_rq_op_cb cb_op,
-                     gyro_rq_user_cb cb_user, void *data, GyroRequest **out_request) {
+int gyro::NewRequest(GyroHandle *handle, const gyro_dir_t direction, const gyro_rq_op_cb cb_op,
+                     const gyro_rq_user_cb cb_user, void *data, GyroRequest **out_request) {
     if (handle == nullptr || handle->gyro == nullptr)
         return GYRO_EINVAL;
 
