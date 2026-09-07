@@ -36,6 +36,7 @@ typedef enum {
     GYRO_EINVAL = -2, /* invalid argument */
     GYRO_ENOMEM = -3, /* allocation hook returned NULL, or the store is capped */
     GYRO_ENOTSUP = -4, /* unsupported by this handle or backend */
+    GYRO_EBUSY = -5, /* still in use, and releasing it now would lose something */
 
     /* Lifecycle */
     GYRO_ECANCELED = -10, /* cancelled explicitly, or by closing the handle */

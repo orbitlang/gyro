@@ -200,6 +200,28 @@ gyro_t *gyro_new(const gyro_allocator_t *allocator) {
     return gyro;
 }
 
+int gyro_free(gyro_t *gyro) {
+    if (gyro == nullptr)
+        return GYRO_COMPLETED;
+
+    // Releasing now would drop operations that still owe a callback, and
+    // handles whose descriptors are still open. Refuse, and leave everything
+    // as it was: winding down is the caller's to finish.
+    if (gyro->request_count > 0 || gyro->closing_queue != nullptr)
+        return GYRO_EBUSY;
+
+    const auto allocator = gyro->allocator;
+
+    if (gyro->handler != kInvalidPoll)
+        IOCleanup(gyro);
+
+    gyro->~Gyro();
+
+    allocator.free(gyro, allocator.ctx);
+
+    return GYRO_COMPLETED;
+}
+
 int gyro_run(gyro_t *gyro) {
     if (gyro == nullptr)
         return GYRO_EINVAL;
@@ -216,20 +238,6 @@ void gyro_stop(gyro_t *gyro) {
     gyro->should_terminate.store(true, std::memory_order_relaxed);
 
     IOWakeup(gyro);
-}
-
-void gyro_free(gyro_t *gyro) {
-    if (gyro == nullptr)
-        return;
-
-    const auto allocator = gyro->allocator;
-
-    if (gyro->handler != kInvalidPoll)
-        IOCleanup(gyro);
-
-    gyro->~Gyro();
-
-    allocator.free(gyro, allocator.ctx);
 }
 
 const char *gyro_version(void) {

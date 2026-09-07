@@ -41,6 +41,31 @@ typedef struct Gyro gyro_t;
 GYRO_API gyro_t *gyro_new(const gyro_allocator_t *allocator);
 
 /**
+ * @brief Releases the loop, once there is nothing left in it.
+ *
+ * Winding the loop down is the caller's job, and it is the same three steps
+ * every time: close the handles with gyro_handle_close(), run the loop so that
+ * their operations report and their descriptors go back to the OS, and only
+ * then release it. Doing it here instead would mean running user callbacks
+ * from inside a teardown the user has already committed to, and waiting on a
+ * peer that may never answer.
+ *
+ * @warning The loop must not be running. Calling this from inside a callback
+ * frees the loop out from under the iteration that is still using it, and no
+ * return value can rescue the caller from that.
+ *
+ * @note What it can see is what it still holds: operations that have yet to
+ * report, and handles closed but not yet buried. A handle that was never
+ * closed at all is unknown to the loop and is not detected, the descriptor
+ * simply leaks, exactly as it would have before.
+ *
+ * @return GYRO_COMPLETED once the loop is gone, or GYRO_EBUSY if it still had
+ *         work in it, in which case **nothing was released** and the loop is
+ *         still the caller's to wind down and free.
+ */
+GYRO_API int gyro_free(gyro_t *gyro);
+
+/**
  * @brief Runs the loop until there is nothing left to do, or it is told to stop.
  *
  * Blocks: it waits for the next thing to happen rather than spinning. It comes
@@ -58,17 +83,6 @@ GYRO_API gyro_t *gyro_new(const gyro_allocator_t *allocator);
  *         embeds the loop: one is the end of the job, the other a decision.
  */
 GYRO_API int gyro_run(gyro_t *gyro);
-
-/**
- * @brief Releases the loop and everything it owns.
- *
- * The loop must not be running. Handles are the user's to close first: run the
- * loop once more after gyro_close() so their callbacks fire and their
- * descriptors are given back.
- *
- * Does nothing when @p gyro is NULL.
- */
-GYRO_API void gyro_free(gyro_t *gyro);
 
 /**
  * @brief Asks a running loop to return from gyro_run().

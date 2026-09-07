@@ -21,6 +21,7 @@
     XX(GYRO_EINVAL, "invalid argument")                                     \
     XX(GYRO_ENOMEM, "out of memory")                                        \
     XX(GYRO_ENOTSUP, "operation not supported")                             \
+    XX(GYRO_EBUSY, "resource still in use")                                 \
     XX(GYRO_ECANCELED, "operation canceled")                                \
     XX(GYRO_ETIMEDOUT, "operation timed out")                               \
     XX(GYRO_EBADF, "bad or closing handle")                                 \
