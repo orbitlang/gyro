@@ -19,6 +19,7 @@ set(GYRO_SOURCES
         src/gyro.cpp
         src/request.cpp
         src/platform/bsd/iopoll.cpp
+        src/platform/linux/iopoll.cpp
         src/platform/posix/oshandle.cpp
         src/platform/posix/net/tcp.cpp
         src/platform/win/iopoll.cpp)

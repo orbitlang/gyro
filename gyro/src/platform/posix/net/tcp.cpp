@@ -7,6 +7,11 @@
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
+
+#ifdef __linux__
+#include <climits> // IOV_MAX
+#endif
+
 #include <unistd.h>
 
 #include <gyro/error.h>
