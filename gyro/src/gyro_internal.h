@@ -28,6 +28,8 @@ struct Gyro {
 
     GyroHandle *closing_queue = nullptr;
 
+    long long request_count = 0;
+
     /// Loop's notion of now, in milliseconds, refreshed once per iteration.
     /// Every deadline is computed against it rather than against a fresh
     /// reading, so requests submitted within one turn share a single now and

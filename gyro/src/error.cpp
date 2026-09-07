@@ -16,6 +16,7 @@
 #define GYRO_ERROR_MAP(XX)                                                  \
     XX(GYRO_COMPLETED, "operation completed")                               \
     XX(GYRO_PENDING, "operation pending")                                   \
+    XX(GYRO_STOPPED, "loop stopped on request")                             \
     XX(GYRO_EUNKNOWN, "unknown error")                                      \
     XX(GYRO_EINVAL, "invalid argument")                                     \
     XX(GYRO_ENOMEM, "out of memory")                                        \

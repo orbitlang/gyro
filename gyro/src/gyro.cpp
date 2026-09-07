@@ -66,6 +66,9 @@ static void CloseHandles(Gyro *loop) {
 
 static int Loop(Gyro *loop) {
     while (!loop->should_terminate.load(std::memory_order_relaxed)) {
+        if (loop->request_count == 0 && loop->closing_queue == nullptr)
+            return GYRO_COMPLETED;
+
         loop->time = TimeNow();
         auto timeout = kBlockForever;
 
@@ -86,7 +89,7 @@ static int Loop(Gyro *loop) {
         CloseHandles(loop);
     }
 
-    return GYRO_COMPLETED;
+    return GYRO_STOPPED;
 }
 
 bool gyro::ProcessHandle(GyroHandle *handle, const gyro_dir_t direction) {
@@ -113,6 +116,8 @@ bool gyro::ProcessHandle(GyroHandle *handle, const gyro_dir_t direction) {
 int gyro::Submit(GyroRequest *request, gyro_request_t *out_token, const long long timeout) {
     const auto timer_only = request->handle == nullptr;
     auto *loop = request->loop;
+
+    loop->request_count += 1;
 
     RequestIndex index{};
     index.fields.generation = request->generation;
@@ -166,6 +171,10 @@ void gyro::FinishRequest(Gyro *loop, GyroRequest *request) {
         loop->r_mheap.Remove(request);
 
     loop->requests.Release(request);
+
+    assert(loop->request_count > 0);
+
+    loop->request_count -= 1;
 }
 
 // PUBLIC

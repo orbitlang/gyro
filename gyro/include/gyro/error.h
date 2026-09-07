@@ -26,9 +26,10 @@ extern "C" {
  * sees final outcomes.
  */
 typedef enum {
-    /* Non-negative outcomes of a submit */
-    GYRO_COMPLETED = 0, /* satisfied at once, no callback will follow */
+    /* Non-negative outcomes */
+    GYRO_COMPLETED = 0, /* satisfied at once, or the loop ran out of work */
     GYRO_PENDING = 1, /* the callback will follow */
+    GYRO_STOPPED = 2, /* the loop returned because it was asked to */
 
     /* Generic */
     GYRO_EUNKNOWN = -1, /* platform code with no mapping */

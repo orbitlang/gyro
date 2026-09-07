@@ -41,18 +41,21 @@ typedef struct Gyro gyro_t;
 GYRO_API gyro_t *gyro_new(const gyro_allocator_t *allocator);
 
 /**
- * @brief Runs the loop until it is told to stop.
+ * @brief Runs the loop until there is nothing left to do, or it is told to stop.
  *
- * Blocks: it waits for the next thing to happen rather than spinning, and
- * returns only once gyro_stop() has been called or the backend has failed. A
- * loop with nothing left to do does not return on its own.
+ * Blocks: it waits for the next thing to happen rather than spinning. It comes
+ * back on its own once no operation is outstanding and no handle is waiting to
+ * be closed, because from there no event could ever arrive, so a loop given
+ * work returns when that work is over, and one given none returns at once.
  *
  * The stop flag is cleared on the way in, so a loop that has been stopped can
  * be run again, and by the same token, a gyro_stop() issued before the loop
  * is running has no effect.
  *
- * @return GYRO_COMPLETED after a clean stop, or a negative status if the
- *         backend failed.
+ * @return GYRO_COMPLETED when the work ran out, GYRO_STOPPED when gyro_stop()
+ *         asked for it, or a negative status if the backend failed. The first
+ *         two are told apart because they mean different things to whoever
+ *         embeds the loop: one is the end of the job, the other a decision.
  */
 GYRO_API int gyro_run(gyro_t *gyro);
 
