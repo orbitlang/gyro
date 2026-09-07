@@ -47,6 +47,8 @@ namespace gyro {
     *QueueFor(T handle, const gyro_dir_t direction) {
         return direction == GYRO_DIR_OUT ? &handle->out : &handle->in;
     }
+
+    void IOHandleClose(GyroHandle *handle);
 } // namespace gyro
 
 #endif // !GYRO_HANDLE_INTERNAL_H_

@@ -62,6 +62,7 @@ static void ReportFailToQueue(const GyroHandle *handle, const gyro_dir_t directi
 }
 
 bool gyro::IOCancel(GyroRequest *request) {
+    (void)request;
     return true;
 }
 

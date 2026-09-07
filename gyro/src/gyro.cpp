@@ -40,6 +40,30 @@ static GyroRequest *RunTimer(Gyro *loop, const long long loop_time) {
     }
 }
 
+static void CloseHandles(Gyro *loop) {
+    GyroHandle **link = &loop->closing_queue;
+
+    while (*link != nullptr) {
+        if ((*link)->in.Count() != 0 || (*link)->out.Count() != 0) {
+            link = &(*link)->next;
+
+            continue;
+        }
+
+        auto *handle = *link;
+
+        *link = handle->next;
+
+        IOHandleClose(handle);
+
+        if (handle->cb_close != nullptr)
+            handle->cb_close(handle);
+
+        const auto allocator = loop->allocator;
+        allocator.free(handle, allocator.ctx);
+    }
+}
+
 static int Loop(Gyro *loop) {
     while (!loop->should_terminate.load(std::memory_order_relaxed)) {
         loop->time = TimeNow();
@@ -52,9 +76,14 @@ static int Loop(Gyro *loop) {
                 timeout = 0;
         }
 
+        if (loop->closing_queue != nullptr)
+            timeout = 0;
+
         const auto error = IOPoll(loop, timeout);
         if (error < 0)
             return error;
+
+        CloseHandles(loop);
     }
 
     return GYRO_COMPLETED;
