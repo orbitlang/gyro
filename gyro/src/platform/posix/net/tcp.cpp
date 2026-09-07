@@ -491,6 +491,13 @@ GYRO_API int gyro_tcp_write(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbuf
     return GYRO_PENDING;
 }
 
+gyro_socket_t gyro_tcp_fileno(const gyro_tcp_t *tcp) {
+    if (tcp == nullptr || tcp->handle.handle == gyro::kInvalidSocket)
+        return gyro::kInvalidSocket;
+
+    return tcp->handle.handle;
+}
+
 gyro_tcp_t *gyro_tcp_new(gyro_t *gyro) {
     if (gyro == nullptr)
         return nullptr;

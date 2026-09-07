@@ -17,6 +17,7 @@
 #include <gyro/error.h>
 #include <gyro/handle.h>
 #include <gyro/loop.h>
+#include <gyro/os.h>
 #include <gyro/request.h>
 #include <gyro/version.h>
 

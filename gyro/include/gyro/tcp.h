@@ -7,6 +7,8 @@
 
 #include <stddef.h>
 
+#include <gyro/os.h>
+
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
 #include <ws2def.h>
 #else
@@ -129,30 +131,49 @@ GYRO_API int gyro_tcp_read(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbufs
                            gyro_rq_user_cb cb, void *data, gyro_request_t *token, size_t *transferred);
 
 /**
- * @brief Writes data to a TCP connection.
+ * @brief Writes everything, however many syscalls that takes.
  *
- * This function attempts to send data from the provided buffers over the TCP connection.
- * If the data cannot be immediately written (e.g., due to send buffer limitations),
- * it will queue the operation for asynchronous execution.
+ * A partial write is not an outcome: the loop retries the remainder on its own
+ * and reports only once the last byte has gone, so the caller never writes a
+ * retry loop and GYRO_COMPLETED never means "part of it". The bytes counted on
+ * a failure or a timeout are those that did make it out.
  *
- * @param tcp A pointer to the TCP connection object.
- * @param bufs An array of buffers containing the data to write.
- * @param nbufs The number of buffers in the array.
- * @param timeout The maximum duration (in milliseconds) to wait for completing the operation.
- *                If set to 0, the operation is immediate without waiting.
- * @param cb An optional callback function to be invoked upon the completion of the operation.
- *           If `nullptr`, no callback will be used.
- * @param data A user-defined pointer to pass additional data to the callback function.
- * @param token A pointer to a request token, which will be assigned a unique identifier
- *              for the operation. If `nullptr`, no token will be returned.
- * @param transferred A pointer to a variable where the number of bytes successfully written
- *                    will be stored. If `nullptr`, this information will not be returned.
- * @return Returns GYRO_COMPLETED if the data is written completely and immediately.
- *         Returns GYRO_PENDING if the write operation is queued for asynchronous completion.
- *         Returns an error code (e.g., GYRO_EINVAL) if an invalid input or other error occurs.
+ * Writes on one handle leave in the order they were submitted.
+ *
+ * @param bufs Regions to send, in order. They and the array naming them must
+ *             stay valid, and unmodified, until the operation reports, gyro
+ *             hands them to the kernel rather than copying them, and leaves the
+ *             array exactly as it found it.
+ * @param timeout Milliseconds before the write is given up on, or 0 for none.
+ *                A write that times out has usually sent something already.
+ * @param cb Reports the outcome. Not called when GYRO_COMPLETED is returned.
+ * @param token Receives the token naming the operation, or NULL. Set to an
+ *              invalid token unless GYRO_PENDING is returned.
+ * @param transferred Receives the byte count when everything went out in one
+ *                    go, or NULL. Set to 0 in every other case.
+ * @return GYRO_PENDING, GYRO_COMPLETED when the whole of it was written at
+ *         once, or a negative status such as GYRO_EPIPE.
  */
 GYRO_API int gyro_tcp_write(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbufs, long long timeout,
                             gyro_rq_user_cb cb, void *data, gyro_request_t *token, size_t *transferred);
+
+/**
+ * @brief Returns the socket the handle is built on.
+ *
+ * For what gyro does not wrap: a socket option it has no call for, or a
+ * question only the OS can answer (e.g. getsockname) on a server bound to port 0
+ * being the usual one.
+ *
+ * Do not read from it, write to it, or close it. The loop owns the readiness
+ * of that socket and the operations queued against it: reading behind its back
+ * takes bytes belonging to a queued read, and closing it hands the number back
+ * to the OS while the loop is still watching it, which is how an unrelated file
+ * ends up being polled. Use gyro_handle_close() instead.
+ *
+ * @return The socket, or GYRO_INVALID_SOCKET while the handle has none, which
+ *         is the case until gyro_tcp_bind() or gyro_tcp_connect() opens one.
+ */
+GYRO_API gyro_socket_t gyro_tcp_fileno(const gyro_tcp_t *tcp);
 
 /**
  * @brief Creates a TCP handle owned by the loop.
