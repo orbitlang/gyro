@@ -5,6 +5,8 @@
 #ifndef GYRO_PLATFORM_LINUX_BACKEND_H_
 #define GYRO_PLATFORM_LINUX_BACKEND_H_
 
+#include <cstdint>
+
 namespace gyro {
     constexpr uint32_t kMaxEvents = 32;
 
