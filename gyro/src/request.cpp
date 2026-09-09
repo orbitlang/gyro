@@ -38,10 +38,10 @@ int gyro::NewRequest(GyroHandle *handle, const gyro_dir_t direction, const gyro_
 }
 
 void gyro::CancelRequest(GyroRequest *request) {
-    if (request->cancelled)
+    if (request->abandoned)
         return;
 
-    request->cancelled = true;
+    request->abandoned = GYRO_ECANCELED;
 
     if (request->handle != nullptr)
         request->timer.cancel_on_timeout = true;

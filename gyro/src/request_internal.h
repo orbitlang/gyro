@@ -56,7 +56,10 @@ struct GyroRequest {
         uint64_t transferred;
     } io;
 
-    bool cancelled;
+    /// Completion status: GYRO_COMPLETED if still active, otherwise the reason
+    /// the operation was terminated. Set when the decision is made and retained
+    /// until reported, which may be delayed on completion port implementations.
+    int abandoned;
 
     /// Which queue of that handle holds it.
     gyro_dir_t direction;

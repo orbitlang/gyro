@@ -365,9 +365,25 @@ namespace {
         RunFor(1);
 
         EXPECT_EQ(report.calls, 1);
+        EXPECT_EQ(report.status, GYRO_ETIMEDOUT);
+    }
 
-        // Records what the loop does today. A deadline and an explicit cancel
-        // are indistinguishable to the caller, though GYRO_ETIMEDOUT exists.
+    TEST_F(TcpTest, CancellingAnOperationThatAlsoHadADeadlineIsNotATimeout) {
+        char storage[64];
+        gyro_buf_t buf{storage, sizeof(storage)};
+        Report report;
+        gyro_request_t token;
+
+        // Generous enough that it cannot expire on its own before the cancel.
+        ASSERT_EQ(gyro_tcp_read(this->conn, &buf, 1, 30000, Done, &report, &token, nullptr), GYRO_PENDING);
+
+        ASSERT_EQ(gyro_request_cancel(this->loop, token), GYRO_COMPLETED);
+
+        RunFor(1);
+
+        // Both endings travel the same path — the deadline is brought forward
+        // to now — so the only thing that keeps them apart is which of the two
+        // decided first.
         EXPECT_EQ(report.status, GYRO_ECANCELED);
     }
 

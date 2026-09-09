@@ -163,7 +163,7 @@ namespace gyro::support {
             out_token.fields.index = req->index;
 
             // A released slot keeps whatever its last occupant left in it, and a
-            // stale 'cancelled' or 'cancel_on_timeout' would quietly ruin the
+            // stale 'abandoned' or 'cancel_on_timeout' would quietly ruin the
             // next operation to land here. Hand out a blank request instead of
             // trusting every caller to overwrite every field.
             memset(req, 0, sizeof(GyroRequest));

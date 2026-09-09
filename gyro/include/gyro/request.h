@@ -105,7 +105,9 @@ GYRO_API int gyro_request_cancel(const gyro_t *gyro, gyro_request_t token);
  * @param out_token Receives the token naming the operation. May be NULL when
  *                  the caller will never cancel it.
  * @param timeout Milliseconds before the operation is given up on, or 0 to
- *                let it wait indefinitely.
+ *                let it wait indefinitely. A deadline that arrives reports
+ *                GYRO_ETIMEDOUT; a cancellation somebody asked for reports
+ *                GYRO_ECANCELED, even when the operation also had a deadline.
  * @return GYRO_PENDING once the loop owns the operation, or a negative status,
  *         in which case no callback will fire.
  */

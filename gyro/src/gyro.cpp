@@ -30,13 +30,18 @@ static GyroRequest *RunTimer(Gyro *loop, const long long loop_time) {
 
         bool remove = true;
         if (request->timer.cancel_on_timeout) {
-            request->cancelled = true;
+            // Already given up on means somebody asked for it, and that stays
+            // the answer. Otherwise the deadline simply arrived, which is a
+            // different thing to whoever is waiting: one says stop trying, the
+            // other says it took too long.
+            if (request->abandoned == GYRO_COMPLETED)
+                request->abandoned = GYRO_ETIMEDOUT;
 
             remove = IOCancel(request);
         }
 
         if (remove)
-            gyro_op_complete(request, request->cancelled ? GYRO_ECANCELED : GYRO_COMPLETED, request->io.transferred);
+            gyro_op_complete(request, request->abandoned, request->io.transferred);
     }
 }
 
@@ -93,15 +98,17 @@ static int Loop(Gyro *loop) {
 }
 
 bool gyro::ProcessHandle(GyroHandle *handle, const gyro_dir_t direction) {
-    const auto *queue = direction == GYRO_DIR_OUT ? &handle->out : &handle->in;
+    const auto *queue = QueueFor(handle, direction);
 
     for (;;) {
         auto *request = queue->GetHead();
         if (request == nullptr)
             return false;
 
-        if (request->cancelled) {
-            gyro_op_complete(request, GYRO_ECANCELED, request->io.transferred);
+        // Given up on before it ever ran, or while a completion port still had
+        // it. Either way the answer was decided elsewhere.
+        if (request->abandoned) {
+            gyro_op_complete(request, request->abandoned, request->io.transferred);
 
             continue;
         }

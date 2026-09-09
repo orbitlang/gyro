@@ -49,7 +49,9 @@ typedef struct GyroTcp gyro_tcp_t;
  * would.
  *
  * @param timeout Milliseconds to wait for a connection, or 0 to wait
- *                indefinitely.
+ *                indefinitely. A deadline that arrives reports
+ *                GYRO_ETIMEDOUT, which is how it is told apart from a
+ *                cancellation somebody asked for.
  * @param cb Reports the outcome. Its `transferred` is always 0.
  * @param out_token Receives the token naming the operation, or NULL.
  * @return GYRO_PENDING, GYRO_COMPLETED if a connection was already waiting, or
@@ -80,7 +82,8 @@ GYRO_API int gyro_tcp_bind(gyro_tcp_t *tcp, const struct sockaddr *addr, size_t 
  * @param timeout Milliseconds to wait, or 0 to wait as long as the OS does.
  *                A connection is not established any faster by giving up on it
  *                sooner, so this is about how long the caller is prepared to
- *                block, not about the network.
+ *                block, not about the network. A deadline that arrives reports
+ *                GYRO_ETIMEDOUT.
  * @param cb Reports the outcome. Its `transferred` is always 0.
  * @param out_token Receives the token naming the operation, or NULL. Set to an
  *                  invalid token unless GYRO_PENDING is returned.
@@ -119,6 +122,8 @@ GYRO_API int gyro_tcp_listen(const gyro_tcp_t *tcp, int backlog);
  * @param bufs Regions to fill, in order. They and the array naming them must
  *             stay valid, and unmodified, until the operation reports.
  * @param timeout Milliseconds before the read is given up on, or 0 for none.
+ *                A deadline that arrives reports GYRO_ETIMEDOUT, distinct from
+ *                the GYRO_ECANCELED of a cancellation somebody asked for.
  * @param cb Reports the outcome. Not called when GYRO_COMPLETED is returned.
  * @param token Receives the token naming the operation, or NULL. Set to an
  *              invalid token unless GYRO_PENDING is returned.
@@ -145,7 +150,8 @@ GYRO_API int gyro_tcp_read(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbufs
  *             hands them to the kernel rather than copying them, and leaves the
  *             array exactly as it found it.
  * @param timeout Milliseconds before the write is given up on, or 0 for none.
- *                A write that times out has usually sent something already.
+ *                A write that times out has usually sent something already, and
+ *                reports GYRO_ETIMEDOUT along with how much.
  * @param cb Reports the outcome. Not called when GYRO_COMPLETED is returned.
  * @param token Receives the token naming the operation, or NULL. Set to an
  *              invalid token unless GYRO_PENDING is returned.
