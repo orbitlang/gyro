@@ -50,6 +50,8 @@ struct Gyro {
 
     std::atomic_bool should_terminate = false;
 
+    std::atomic_flag wakeup_pending = ATOMIC_FLAG_INIT;
+
     explicit Gyro(const gyro_allocator_t *allocator) : allocator(*allocator), requests(&this->allocator) {
     }
 

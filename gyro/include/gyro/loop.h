@@ -85,6 +85,29 @@ GYRO_API int gyro_free(gyro_t *gyro);
 GYRO_API int gyro_run(gyro_t *gyro);
 
 /**
+ * @brief Tells whether the caller is the thread the loop runs on.
+ *
+ * The loop handles most of its operations internally. Its queues, timers, and
+ * request store are accessed exclusively by a single thread. Submission is the
+ * sole exception, as it may occur from any thread. When a submission originates
+ * from another thread, it is transferred to the loop thread for execution, with
+ * results provided subsequently.
+ *
+ * This is what code performing its own work on a handle has to ask before
+ * touching anything of the loop's, and it is the first half of what
+ * gyro_handle_may_try() answers.
+ *
+ * Until the loop has been run for the first time the answer is the thread that
+ * created it, so a program that sets everything up before starting the loop is
+ * on the loop's thread throughout.
+ *
+ * Safe to call from any thread: answering this is what it is for.
+ *
+ * @return Non-zero when the caller is the loop's thread.
+ */
+GYRO_API int gyro_on_loop_thread(const gyro_t *gyro);
+
+/**
  * @brief Asks a running loop to return from gyro_run().
  *
  * Wakes the loop rather than waiting for it to notice, so it takes effect even

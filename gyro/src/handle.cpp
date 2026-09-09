@@ -12,6 +12,21 @@ gyro_t *gyro_handle_loop(const gyro_handle_t *handle) {
     return handle->gyro;
 }
 
+int gyro_handle_may_try(const gyro_handle_t *handle, const gyro_dir_t direction) {
+    if (handle == nullptr)
+        return 0;
+
+    // Asked first, because every other question below reads state that only
+    // the loop's thread may look at.
+    if (!gyro_on_loop_thread(handle->gyro))
+        return 0;
+
+    if (handle->state != gyro::HandleState::ACTIVE)
+        return 0;
+
+    return gyro::QueueFor(handle, direction)->Count() == 0;
+}
+
 unsigned int gyro_handle_pending(const gyro_handle_t *handle, const gyro_dir_t direction) {
     return gyro::QueueFor(handle, direction)->Count();
 }

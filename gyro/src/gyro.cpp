@@ -70,6 +70,8 @@ static void CloseHandles(Gyro *loop) {
 }
 
 static void DrainMPSC(Gyro *loop) {
+    loop->wakeup_pending.clear(std::memory_order_release);
+
     auto *queue = loop->mpsc_queue.exchange(nullptr, std::memory_order_acq_rel);
 
     GyroRequest *ordered = nullptr;
@@ -178,6 +180,9 @@ int gyro::Submit(GyroRequest *request, gyro_request_t *out_token, const long lon
                                                          std::memory_order_relaxed));
 
         request->timer.timeout = timeout;
+
+        if (!loop->wakeup_pending.test_and_set(std::memory_order_acquire))
+            IOWakeup(loop);
 
         return GYRO_PENDING;
     }
@@ -288,6 +293,13 @@ int gyro_run(gyro_t *gyro) {
     gyro->should_terminate.store(false, std::memory_order_relaxed);
 
     return Loop(gyro);
+}
+
+int gyro_on_loop_thread(const gyro_t *gyro) {
+    if (gyro == nullptr)
+        return 0;
+
+    return gyro->th_loop_id.load(std::memory_order_relaxed) == std::this_thread::get_id();
 }
 
 void gyro_stop(gyro_t *gyro) {

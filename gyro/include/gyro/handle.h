@@ -44,11 +44,36 @@ typedef void (*gyro_close_cb)(gyro_handle_t *handle);
 GYRO_API gyro_t *gyro_handle_loop(const gyro_handle_t *handle);
 
 /**
+ * @brief Tells whether an operation may be attempted directly, here and now.
+ *
+ * The whole precondition of the fast path, in one place: the caller is on the
+ * loop's own thread, the handle is still open, and nothing is queued ahead of
+ * it in that direction. Each of the three answers a different way of going
+ * wrong; touching the loop's state from outside its thread, working a
+ * descriptor it has already handed back, and taking bytes that belong to an
+ * operation submitted earlier.
+ *
+ * A submit that gets a yes may carry the syscall out itself and report the
+ * result at once. A no is not a failure: it means the operation has to be
+ * handed to the loop like any other.
+ *
+ * Safe to call from any thread: answering this is what it is for.
+ *
+ * @param direction Which of the handle's two streams the operation belongs to.
+ * @return Non-zero when the attempt is allowed.
+ */
+GYRO_API int gyro_handle_may_try(const gyro_handle_t *handle, gyro_dir_t direction);
+
+/**
  * @brief Returns how many operations are waiting in one direction.
  *
- * Zero is what lets a submit try the syscall directly instead of queueing:
- * with something already waiting, going direct would take bytes belonging to
- * the operation ahead of it.
+ * For code that needs to know the current queue depth, for example to decide whether
+ * to apply backpressure, rather than to determine whether an operation may proceed immediately.
+ * That decision is handled by `gyro_handle_may_try()`, which evaluates
+ * this value together with the other required conditions.
+ *
+ * @warning Must be called on the loop's own thread. The count belongs to the
+ * loop and is not published for anybody else to read.
  *
  * @param handle Handle to inspect.
  * @param direction Which of its two queues to count.

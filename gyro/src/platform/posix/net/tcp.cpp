@@ -303,7 +303,7 @@ int gyro_tcp_accept(gyro_tcp_t *tcp, gyro_tcp_t *client, const long long timeout
     if (status != GYRO_COMPLETED)
         return status;
 
-    if (gyro_handle_pending((GyroHandle *) tcp, GYRO_DIR_IN) == 0) {
+    if (gyro_handle_may_try((GyroHandle *) tcp, GYRO_DIR_IN)) {
         status = AcceptOnce(tcp->handle.handle, (GyroHandle *) client);
         if (status != GYRO_PENDING)
             return status;
@@ -405,7 +405,7 @@ GYRO_API int gyro_tcp_read(gyro_tcp_t *tcp, gyro_buf_t *bufs, const unsigned int
     if (status != GYRO_COMPLETED)
         return status;
 
-    if (gyro_handle_pending((GyroHandle *) tcp, GYRO_DIR_IN) == 0) {
+    if (gyro_handle_may_try((GyroHandle *) tcp, GYRO_DIR_IN)) {
         const ssize_t n = ReadOnce(tcp->handle.handle, bufs, nbufs);
         if (n == 0)
             return GYRO_EOF;
@@ -454,7 +454,7 @@ GYRO_API int gyro_tcp_write(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbuf
     size_t offset = 0;
     size_t sent = 0;
 
-    if (gyro_handle_pending((GyroHandle *) tcp, GYRO_DIR_OUT) == 0) {
+    if (gyro_handle_may_try((GyroHandle *) tcp, GYRO_DIR_OUT)) {
         do {
             SkipEmpty(&bufs, &nbufs, &offset);
 
