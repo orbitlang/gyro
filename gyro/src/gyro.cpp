@@ -69,13 +69,50 @@ static void CloseHandles(Gyro *loop) {
     }
 }
 
+static void DrainMPSC(Gyro *loop) {
+    auto *queue = loop->mpsc_queue.exchange(nullptr, std::memory_order_acq_rel);
+
+    GyroRequest *ordered = nullptr;
+
+    while (queue != nullptr) {
+        auto *next = queue->queue.next;
+
+        queue->queue.next = ordered;
+        ordered = queue;
+
+        queue = next;
+    }
+
+    while (ordered != nullptr) {
+        auto *next = ordered->queue.next;
+
+        ordered->queue.next = nullptr;
+
+        const auto cb = ordered->cb_user;
+        auto *handle = ordered->handle;
+        auto *data = ordered->data;
+
+        const auto status = Submit(ordered, nullptr, ordered->timer.timeout);
+        if (status != GYRO_COMPLETED && cb != nullptr)
+            cb(handle, status, 0, data);
+
+        ordered = next;
+    }
+}
+
 static int Loop(Gyro *loop) {
+    loop->th_loop_id = std::this_thread::get_id();
+
     while (!loop->should_terminate.load(std::memory_order_relaxed)) {
-        if (loop->request_count == 0 && loop->closing_queue == nullptr)
+        if (loop->request_count == 0
+            && loop->closing_queue == nullptr
+            && loop->mpsc_queue.load(std::memory_order_relaxed) == nullptr)
             return GYRO_COMPLETED;
 
         loop->time = TimeNow();
         auto timeout = kBlockForever;
+
+        DrainMPSC(loop);
 
         const auto *request = RunTimer(loop, loop->time);
         if (request != nullptr) {
@@ -121,10 +158,7 @@ bool gyro::ProcessHandle(GyroHandle *handle, const gyro_dir_t direction) {
 }
 
 int gyro::Submit(GyroRequest *request, gyro_request_t *out_token, const long long timeout) {
-    const auto timer_only = request->handle == nullptr;
     auto *loop = request->loop;
-
-    loop->request_count += 1;
 
     RequestIndex index{};
     index.fields.generation = request->generation;
@@ -133,7 +167,24 @@ int gyro::Submit(GyroRequest *request, gyro_request_t *out_token, const long lon
     if (out_token != nullptr)
         out_token->_opaque = index._opaque;
 
-    if (timer_only) {
+    if (loop->th_loop_id != std::this_thread::get_id()) {
+        auto *last = loop->mpsc_queue.load(std::memory_order_relaxed);
+
+        do
+            request->queue.next = last;
+        while (!loop->mpsc_queue.compare_exchange_strong(last,
+                                                         request,
+                                                         std::memory_order_release,
+                                                         std::memory_order_relaxed));
+
+        request->timer.timeout = timeout;
+
+        return GYRO_PENDING;
+    }
+
+    loop->request_count += 1;
+
+    if (request->handle == nullptr) {
         request->timer.timeout = loop->time + timeout;
         request->timer.id = loop->time_id++;
 
@@ -202,6 +253,7 @@ gyro_t *gyro_new(const gyro_allocator_t *allocator) {
         }
 
         gyro->time = TimeNow();
+        gyro->th_loop_id = std::this_thread::get_id();
     }
 
     return gyro;

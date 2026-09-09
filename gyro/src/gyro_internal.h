@@ -6,6 +6,7 @@
 #define GYRO_GYRO_INTERNAL_H_
 
 #include <atomic>
+#include <thread>
 
 #include <gyro/allocator.h>
 
@@ -27,6 +28,11 @@ struct Gyro {
     gyro::ReqHeap r_mheap;
 
     GyroHandle *closing_queue = nullptr;
+
+    std::atomic<GyroRequest *> mpsc_queue = nullptr;
+
+    std::atomic<std::thread::id> th_loop_id{};
+    static_assert(std::atomic<std::thread::id>::is_always_lock_free);
 
     long long request_count = 0;
 
