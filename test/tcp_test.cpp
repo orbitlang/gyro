@@ -2,7 +2,9 @@
 //
 // Licensed under the Apache License v2.0
 
+#include <chrono>
 #include <cstring>
+#include <thread>
 #include <vector>
 
 #include <arpa/inet.h>
@@ -177,6 +179,157 @@ namespace {
         this->conn = nullptr;
 
         EXPECT_EQ(report.status, GYRO_ECANCELED);
+    }
+
+    // -----------------------------------------------------------------------
+    // Submits from other threads
+    //
+    // SetUp has already run the loop once, so the loop's thread is this one and
+    // anything a std::thread submits takes the queued path. Each test pushes
+    // before calling gyro_run() again, so none of them depends on the wakeup.
+    // -----------------------------------------------------------------------
+
+    TEST_F(TcpTest, ASubmitFromAnotherThreadIsCarriedOut) {
+        char storage[64];
+        gyro_buf_t buf{storage, sizeof(storage)};
+        Report report;
+        int rc = GYRO_EUNKNOWN;
+
+        std::thread other([&] {
+            rc = gyro_tcp_read(this->conn, &buf, 1, 0, Done, &report, nullptr, nullptr);
+        });
+        other.join();
+
+        // It cannot have run yet: the loop that owns the queues is not running.
+        EXPECT_EQ(rc, GYRO_PENDING);
+        EXPECT_EQ(report.calls, 0);
+
+        char message[] = "hello";
+        gyro_buf_t out{message, 5};
+
+        ASSERT_EQ(gyro_tcp_write(this->client, &out, 1, 0, nullptr, nullptr, nullptr, nullptr), GYRO_COMPLETED);
+
+        RunFor(1);
+
+        EXPECT_EQ(report.status, GYRO_COMPLETED);
+        EXPECT_EQ(report.transferred, 5u);
+        EXPECT_EQ(memcmp(storage, "hello", 5), 0);
+    }
+
+    TEST_F(TcpTest, ASubmitFromAnotherThreadWakesASleepingLoop) {
+        using namespace std::chrono_literals;
+
+        // A read nothing will ever answer: the loop has work, carries no
+        // deadline, and is therefore genuinely asleep in the backend. No
+        // callback on it, so it stays out of the accounting.
+        char idle[16];
+        gyro_buf_t idlebuf{idle, sizeof(idle)};
+
+        ASSERT_EQ(gyro_tcp_read(this->conn, &idlebuf, 1, 0, nullptr, nullptr, nullptr, nullptr), GYRO_PENDING);
+
+        char storage[16];
+        gyro_buf_t buf{storage, sizeof(storage)};
+        Report report;
+
+        std::thread other([&] {
+            std::this_thread::sleep_for(100ms);
+
+            // Nothing will ever satisfy this read either, so the only thing
+            // that can end it is its deadline — and the deadline is not set
+            // until the loop drains the queue. If the wakeup never arrives the
+            // loop stays asleep and no timer is ever armed.
+            EXPECT_EQ(gyro_tcp_read(this->client, &buf, 1, 50, Done, &report, nullptr, nullptr), GYRO_PENDING);
+        });
+
+        TcpTest::current = this;
+        this->outstanding = 1;
+
+        const auto started = std::chrono::steady_clock::now();
+        const int rc = gyro_run(this->loop);
+        const auto elapsed = std::chrono::steady_clock::now() - started;
+
+        other.join();
+
+        EXPECT_EQ(rc, GYRO_STOPPED);
+        EXPECT_EQ(report.status, GYRO_ETIMEDOUT);
+        EXPECT_GE(elapsed, 140ms) << "the deadline cannot have been armed before the queue was drained";
+    }
+
+    TEST_F(TcpTest, SubmitsFromAnotherThreadKeepTheOrderTheyWereMadeIn) {
+        constexpr int kCount = 8;
+
+        // One byte each, so the n-th read can only be satisfied by the n-th
+        // byte of the stream: the letters say what order they were served in.
+        char storage[kCount] = {};
+        gyro_buf_t bufs[kCount];
+        Report reports[kCount];
+
+        std::thread other([&] {
+            for (int i = 0; i < kCount; i++) {
+                bufs[i].base = &storage[i];
+                bufs[i].len = 1;
+
+                EXPECT_EQ(gyro_tcp_read(this->conn, &bufs[i], 1, 0, Done, &reports[i], nullptr, nullptr),
+                          GYRO_PENDING);
+            }
+        });
+        other.join();
+
+        char message[] = "ABCDEFGH";
+        gyro_buf_t out{message, kCount};
+
+        ASSERT_EQ(gyro_tcp_write(this->client, &out, 1, 0, nullptr, nullptr, nullptr, nullptr), GYRO_COMPLETED);
+
+        RunFor(kCount);
+
+        for (int i = 0; i < kCount; i++) {
+            EXPECT_EQ(reports[i].status, GYRO_COMPLETED) << "read " << i;
+            EXPECT_EQ(storage[i], 'A' + i)
+                            << "read " << i << " was served out of turn: the batch is being drained backwards";
+        }
+    }
+
+    TEST_F(TcpTest, ManyThreadsCanSubmitAtTheSameTime) {
+        constexpr int kThreads = 4;
+        constexpr int kPerThread = 4;
+        constexpr int kCount = kThreads * kPerThread;
+
+        char storage[kCount] = {};
+        gyro_buf_t bufs[kCount];
+        Report reports[kCount];
+
+        // Every thread pushes onto the same queue at once: a request lost by
+        // the compare-exchange never reports, and the loop waits for it for
+        // ever rather than failing.
+        std::vector<std::thread> threads;
+        for (int t = 0; t < kThreads; t++) {
+            threads.emplace_back([&, t] {
+                for (int i = 0; i < kPerThread; i++) {
+                    const int at = t * kPerThread + i;
+
+                    bufs[at].base = &storage[at];
+                    bufs[at].len = 1;
+
+                    EXPECT_EQ(gyro_tcp_read(this->conn, &bufs[at], 1, 0, Done, &reports[at], nullptr, nullptr),
+                              GYRO_PENDING);
+                }
+            });
+        }
+
+        for (auto &thread: threads)
+            thread.join();
+
+        std::vector<char> message(kCount, 'x');
+        gyro_buf_t out{message.data(), kCount};
+
+        ASSERT_EQ(gyro_tcp_write(this->client, &out, 1, 0, nullptr, nullptr, nullptr, nullptr), GYRO_COMPLETED);
+
+        RunFor(kCount);
+
+        for (int i = 0; i < kCount; i++) {
+            EXPECT_EQ(reports[i].calls, 1) << "request " << i << " never reported";
+            EXPECT_EQ(reports[i].status, GYRO_COMPLETED) << "request " << i;
+        }
     }
 
     TEST_F(TcpTest, RunReturnsAtOnceWhenThereIsNothingToDo) {
