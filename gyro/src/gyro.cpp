@@ -16,6 +16,13 @@ using namespace gyro;
 /// something to report.
 constexpr long long kBlockForever = -1;
 
+/// Whether the loop still owes somebody something.
+static bool HasWork(const Gyro *loop) {
+    return loop->request_count != 0
+           || loop->closing_queue != nullptr
+           || loop->mpsc_queue.load(std::memory_order_relaxed) != nullptr;
+}
+
 static long long TimeNow() {
     const auto now = std::chrono::steady_clock::now();
     return std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
@@ -107,9 +114,7 @@ static int Loop(Gyro *loop) {
     loop->th_loop_id = std::this_thread::get_id();
 
     while (!loop->should_terminate.load(std::memory_order_relaxed)) {
-        if (loop->request_count == 0
-            && loop->closing_queue == nullptr
-            && loop->mpsc_queue.load(std::memory_order_relaxed) == nullptr)
+        if (!HasWork(loop))
             return GYRO_COMPLETED;
 
         loop->time = TimeNow();
@@ -122,7 +127,8 @@ static int Loop(Gyro *loop) {
             timeout = request->timer.timeout - loop->time;
             if (timeout < 0)
                 timeout = 0;
-        }
+        } else if (!HasWork(loop))
+            continue;
 
         if (loop->closing_queue != nullptr)
             timeout = 0;
@@ -171,6 +177,13 @@ int gyro::Submit(GyroRequest *request, gyro_request_t *out_token, const long lon
         out_token->_opaque = index._opaque;
 
     if (loop->th_loop_id != std::this_thread::get_id()) {
+        // Written before the request is published, not after: the exchange
+        // below hands it to the loop, which reads the deadline out of it as
+        // soon as it drains. Writing it afterwards is a race the loop loses
+        // silently, by finding the zero the slot was blanked with and arming
+        // no deadline at all.
+        request->timer.timeout = timeout;
+
         auto *last = loop->mpsc_queue.load(std::memory_order_relaxed);
 
         do
@@ -179,8 +192,6 @@ int gyro::Submit(GyroRequest *request, gyro_request_t *out_token, const long lon
                                                          request,
                                                          std::memory_order_release,
                                                          std::memory_order_relaxed));
-
-        request->timer.timeout = timeout;
 
         if (!loop->wakeup_pending.test_and_set(std::memory_order_acquire))
             IOWakeup(loop);

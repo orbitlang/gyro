@@ -2,6 +2,7 @@
 //
 // Licensed under the Apache License v2.0
 
+#include <atomic>
 #include <chrono>
 #include <cstring>
 #include <thread>
@@ -193,6 +194,150 @@ namespace {
         this->conn = nullptr;
 
         EXPECT_EQ(report.status, GYRO_ECANCELED);
+    }
+
+    // -----------------------------------------------------------------------
+    // Overlap
+    //
+    // Everything above hands work between threads with a join() in the middle,
+    // so the threads never actually run at the same time. These two do overlap,
+    // which is the only way a thread sanitiser has anything to look at. They
+    // assert on what holds however the interleaving falls: nothing lost, every
+    // operation reported once, and the claim counters back to zero.
+    // -----------------------------------------------------------------------
+
+    /// Counters a callback on the loop's thread shares with a test asserting
+    /// from another.
+    struct Tally {
+        std::atomic<int> calls{0};
+        std::atomic<size_t> bytes{0};
+
+        void Reset() {
+            this->calls.store(0);
+            this->bytes.store(0);
+        }
+    };
+
+    Tally tally;
+
+    gyro_cb_status_t Count(gyro_handle_t *, int, const size_t transferred, void *) {
+        tally.bytes.fetch_add(transferred);
+        tally.calls.fetch_add(1);
+
+        return GYRO_CB_SUCCESS;
+    }
+
+    TEST_F(TcpTest, InlineWritesFromManyThreadsOverlapWithARunningLoop) {
+        constexpr int kThreads = 4;
+        constexpr int kEach = 16;
+        constexpr size_t kBytes = 4;
+        constexpr int kTotal = kThreads * kEach;
+
+        tally.Reset();
+
+        // Small enough that the whole lot fits in the socket buffer, so no
+        // reader is needed and nothing blocks on the peer.
+        std::vector storage(kTotal * kBytes, 'x');
+        std::vector<gyro_buf_t> bufs(kTotal);
+        for (int i = 0; i < kTotal; i++)
+            bufs[i] = gyro_buf_t{&storage[i * kBytes], kBytes};
+
+        std::atomic running{kThreads};
+        std::atomic inline_calls{0};
+        std::atomic<size_t> inline_bytes{0};
+
+        std::vector<std::thread> threads;
+        for (int i = 0; i < kThreads; i++) {
+            threads.emplace_back([&, i] {
+                for (int j = 0; j < kEach; j++) {
+                    size_t sent = 0;
+
+                    // Four threads on one direction: at most one of them is
+                    // inside the syscall, the rest queue. Which is which is
+                    // undefined, and the test does not care.
+                    const int rc = gyro_tcp_write(this->client, &bufs[i * kEach + j], 1, 0,
+                                                  Count, nullptr, nullptr, &sent);
+                    if (rc == GYRO_COMPLETED) {
+                        inline_calls.fetch_add(1);
+                        inline_bytes.fetch_add(sent);
+                    }
+                }
+
+                running.fetch_sub(1);
+            });
+        }
+
+        // Runs alongside them, coming back whenever it runs dry and going
+        // straight back in. The point is the overlap, not the timing.
+        while (running.load() > 0)
+            gyro_run(this->loop);
+
+        for (auto &thread: threads)
+            thread.join();
+
+        EXPECT_EQ(gyro_run(this->loop), GYRO_COMPLETED);
+
+        // Reported exactly once each, whether here or on the loop.
+        EXPECT_EQ(inline_calls.load() + tally.calls.load(), kTotal);
+        EXPECT_EQ(inline_bytes.load() + tally.bytes.load(), kTotal * kBytes);
+
+        // The one that would catch a claim taken and not given back.
+        EXPECT_EQ(gyro_handle_pending(GYRO_HANDLE(this->client), GYRO_DIR_OUT), 0u);
+    }
+
+    TEST_F(TcpTest, CancellingOverlapsWithAnotherThreadTakingSlotsFromTheStore) {
+        constexpr int kThreads = 4;
+        constexpr int kEach = 64;
+        constexpr int kTotal = kThreads * kEach;
+        constexpr long long kDeadline = 50;
+
+        tally.Reset();
+
+        char storage[kTotal] = {};
+        std::vector<gyro_buf_t> bufs(kTotal);
+        for (int i = 0; i < kTotal; i++)
+            bufs[i] = gyro_buf_t{&storage[i], 1};
+
+        std::atomic<int> running{kThreads};
+
+        std::vector<std::thread> threads;
+        for (int i = 0; i < kThreads; i++) {
+            threads.emplace_back([&, i] {
+                for (int j = 0; j < kEach; j++) {
+                    // Nobody is writing, so each of these takes a slot out of
+                    // the store and waits for its deadline.
+                    EXPECT_EQ(gyro_tcp_read(this->conn, &bufs[i * kEach + j], 1, kDeadline,
+                                            Count, nullptr, nullptr, nullptr),
+                              GYRO_PENDING);
+                }
+
+                running.fetch_sub(1);
+            });
+        }
+
+        // Resolving a token walks the store's page directory, which the submits
+        // above are growing from their own threads. Cancelling is the loop
+        // thread's alone, and this is it: gyro_run() is not running, but the id
+        // it recorded is still this one.
+        const gyro_request_t stale = gyro_request_invalid();
+
+        int cancels = 0;
+        while (running.load() > 0) {
+            gyro_request_cancel(this->loop, stale);
+            cancels++;
+        }
+
+        for (auto &thread: threads)
+            thread.join();
+
+        EXPECT_GT(cancels, 0) << "the submits finished before a single cancel got in";
+
+        // Their deadlines are what ends them, so one turn is enough.
+        while (tally.calls.load() < kTotal)
+            gyro_run(this->loop);
+
+        EXPECT_EQ(tally.calls.load(), kTotal);
+        EXPECT_EQ(gyro_handle_pending(GYRO_HANDLE(this->conn), GYRO_DIR_IN), 0u);
     }
 
     // -----------------------------------------------------------------------
