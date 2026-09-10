@@ -11,6 +11,7 @@
 
 #include <gyro/allocator.h>
 
+#include "mutex.h"
 #include "request_internal.h"
 
 namespace gyro::support {
@@ -43,6 +44,8 @@ namespace gyro::support {
         static constexpr uint32_t kIndexBits = 24;
         static constexpr uint32_t kMaxSlots = 1u << kIndexBits;
         static constexpr uint32_t kNoSlot = 0xFFFFFFFF;
+
+        mutable Mutex lock_;
 
         const gyro_allocator_t *allocator_ = nullptr;
 
@@ -152,12 +155,16 @@ namespace gyro::support {
          *         allocation failed.
          */
         GyroRequest *Acquire(RequestIndex &out_token) noexcept {
+            UniqueLock lock(this->lock_);
+
             if (this->next_free_ == kNoSlot && !this->Grow())
                 return nullptr;
 
             auto *req = this->At(this->next_free_);
 
             this->next_free_ = req->next_free;
+
+            lock.unlock();
 
             out_token.fields.generation = req->generation;
             out_token.fields.index = req->index;
@@ -183,6 +190,8 @@ namespace gyro::support {
          *         valid, or names a slot this store does not have.
          */
         [[nodiscard]] GyroRequest *Resolve(const RequestIndex index) const noexcept {
+            Guard _(this->lock_);
+
             if (index.fields.index >= this->nslots_)
                 return nullptr;
 
@@ -201,6 +210,8 @@ namespace gyro::support {
          * into the free list twice, and the store then hands it to two callers.
          */
         void Release(GyroRequest *request) noexcept {
+            Guard _(this->lock_);
+
             request->generation += 1;
             request->next_free = this->next_free_;
 
