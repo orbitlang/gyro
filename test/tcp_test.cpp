@@ -9,6 +9,7 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <poll.h>
 
 #include <gtest/gtest.h>
 
@@ -77,6 +78,19 @@ namespace {
         void Arrived() {
             if (--this->outstanding == 0)
                 gyro_stop(this->loop);
+        }
+
+        /**
+         * @brief Blocks until @p tcp has something to read.
+         *
+         * Loopback delivers quickly but not synchronously, so a test that
+         * wants an inline read to find data has to wait for it rather than
+         * assume it. Only waits: the bytes are left for gyro to take.
+         */
+        static void WaitReadable(gyro_tcp_t *tcp) {
+            pollfd pfd{(int) gyro_tcp_fileno(tcp), POLLIN, 0};
+
+            ASSERT_EQ(poll(&pfd, 1, 2000), 1) << "the peer's bytes never arrived";
         }
 
         /// Runs until @p callbacks more callbacks have fired.
@@ -179,6 +193,162 @@ namespace {
         this->conn = nullptr;
 
         EXPECT_EQ(report.status, GYRO_ECANCELED);
+    }
+
+    // -----------------------------------------------------------------------
+    // The inline claim
+    //
+    // An operation may be carried out on whatever thread asked for it, but only
+    // one at a time per direction, and only while nothing else is outstanding.
+    // What enforces that is a claim taken on the handle, which the operation
+    // gives back when it ends here or hands to the request when it is queued.
+    // -----------------------------------------------------------------------
+
+    TEST_F(TcpTest, AWriteFromAnotherThreadIsCarriedOutOnThatThread) {
+        char message[] = "hello";
+        gyro_buf_t out{message, 5};
+
+        int rc = GYRO_EUNKNOWN;
+        size_t sent = 0;
+
+        std::thread other([&] {
+            rc = gyro_tcp_write(this->client, &out, 1, 0, nullptr, nullptr, nullptr, &sent);
+        });
+        other.join();
+
+        // The loop is not running and never sees this one: a socket with room
+        // in its send buffer is served by the thread that asked.
+        EXPECT_EQ(rc, GYRO_COMPLETED);
+        EXPECT_EQ(sent, 5u);
+
+        // Nothing was left behind, so the next operation can go inline too.
+        EXPECT_EQ(gyro_handle_pending(GYRO_HANDLE(this->client), GYRO_DIR_OUT), 0u);
+    }
+
+    TEST_F(TcpTest, AReadFromAnotherThreadIsCarriedOutOnThatThread) {
+        char message[] = "hello";
+        gyro_buf_t out{message, 5};
+        ASSERT_EQ(gyro_tcp_write(this->client, &out, 1, 0, nullptr, nullptr, nullptr, nullptr), GYRO_COMPLETED);
+
+        WaitReadable(this->conn);
+
+        char storage[64] = {};
+        gyro_buf_t in{storage, sizeof(storage)};
+
+        int rc = GYRO_EUNKNOWN;
+        size_t got = 0;
+
+        std::thread other([&] {
+            rc = gyro_tcp_read(this->conn, &in, 1, 0, nullptr, nullptr, nullptr, &got);
+        });
+        other.join();
+
+        EXPECT_EQ(rc, GYRO_COMPLETED);
+        EXPECT_EQ(got, 5u);
+        EXPECT_EQ(memcmp(storage, "hello", 5), 0);
+
+        EXPECT_EQ(gyro_handle_pending(GYRO_HANDLE(this->conn), GYRO_DIR_IN), 0u);
+    }
+
+    TEST_F(TcpTest, AnOperationThatFailsAtOnceStillGivesTheClaimBack) {
+        gyro_handle_close(GYRO_HANDLE(this->client), OnClose);
+        RunFor(1);
+        this->client = nullptr;
+
+        char storage[64];
+        gyro_buf_t in{storage, sizeof(storage)};
+        Report report;
+
+        // Closing the peer does not put the FIN on this socket, it only sends
+        // it, so the first read is whichever of the two the timing allows.
+        // Settling it here is what makes the ones below deterministic.
+        const int rc = gyro_tcp_read(this->conn, &in, 1, 0, Done, &report, nullptr, nullptr);
+        if (rc == GYRO_PENDING) {
+            RunFor(1);
+            ASSERT_EQ(report.status, GYRO_EOF);
+        } else {
+            ASSERT_EQ(rc, GYRO_EOF);
+        }
+
+        // The end of the stream has been seen now, so this one is decided on
+        // the spot and no request is ever created. The claim taken on the way
+        // in has nobody to hand it to.
+        EXPECT_EQ(gyro_tcp_read(this->conn, &in, 1, 0, nullptr, nullptr, nullptr, nullptr), GYRO_EOF);
+        EXPECT_EQ(gyro_handle_pending(GYRO_HANDLE(this->conn), GYRO_DIR_IN), 0u);
+
+        // A leaked claim is invisible until something stops going inline, so
+        // the assertion that matters is that the direction still works.
+        EXPECT_EQ(gyro_tcp_read(this->conn, &in, 1, 0, nullptr, nullptr, nullptr, nullptr), GYRO_EOF);
+    }
+
+    TEST_F(TcpTest, AnOperationOutstandingKeepsTheNextOneOutOfTheFastPath) {
+        char first = 0, second = 0;
+        gyro_buf_t one{&first, 1};
+        gyro_buf_t two{&second, 1};
+        Report reports[2];
+
+        // Queued while there is nothing to read.
+        ASSERT_EQ(gyro_tcp_read(this->conn, &one, 1, 0, Done, &reports[0], nullptr, nullptr), GYRO_PENDING);
+
+        char message[] = "AB";
+        gyro_buf_t out{message, 2};
+        ASSERT_EQ(gyro_tcp_write(this->client, &out, 1, 0, nullptr, nullptr, nullptr, nullptr), GYRO_COMPLETED);
+
+        // Both bytes are in the kernel now, so this read could be satisfied on
+        // the spot. It must not be: taking them here would hand the second
+        // byte to the first read and the first byte to nobody.
+        int rc = GYRO_EUNKNOWN;
+        std::thread other([&] {
+            rc = gyro_tcp_read(this->conn, &two, 1, 0, Done, &reports[1], nullptr, nullptr);
+        });
+        other.join();
+
+        EXPECT_EQ(rc, GYRO_PENDING);
+
+        RunFor(2);
+
+        EXPECT_EQ(first, 'A');
+        EXPECT_EQ(second, 'B');
+        EXPECT_EQ(reports[0].status, GYRO_COMPLETED);
+        EXPECT_EQ(reports[1].status, GYRO_COMPLETED);
+    }
+
+    TEST_F(TcpTest, APartialWriteKeepsTheDirectionClaimedUntilItIsQueued) {
+        // A send buffer small enough that one write cannot fit in it, and a
+        // peer that never reads, so the write is bound to go short.
+        constexpr int kSmall = 4096;
+        ASSERT_EQ(setsockopt((int) gyro_tcp_fileno(this->client), SOL_SOCKET, SO_SNDBUF, &kSmall, sizeof(kSmall)), 0);
+        ASSERT_EQ(setsockopt((int) gyro_tcp_fileno(this->conn), SOL_SOCKET, SO_RCVBUF, &kSmall, sizeof(kSmall)), 0);
+
+        std::vector<char> bulk(4u << 20, 'A');
+        gyro_buf_t big{bulk.data(), bulk.size()};
+
+        char tail[] = "ZZZZ";
+        gyro_buf_t small{tail, 4};
+
+        Report first, second;
+
+        // Goes out in part and the remainder is queued, which is the whole
+        // point: between here and the loop picking it up, the handle's own
+        // queue is still empty.
+        ASSERT_EQ(gyro_tcp_write(this->client, &big, 1, 0, Done, &first, nullptr, nullptr), GYRO_PENDING);
+
+        // Counting queue entries would say zero here, this write would go
+        // inline, and its bytes would land in the middle of the one above.
+        // One thread, two calls in a row, and nobody misused anything.
+        ASSERT_EQ(gyro_tcp_write(this->client, &small, 1, 0, Done, &second, nullptr, nullptr), GYRO_PENDING);
+
+        EXPECT_EQ(gyro_handle_pending(GYRO_HANDLE(this->client), GYRO_DIR_OUT), 2u)
+                        << "the remainder of the first write is invisible to the direction";
+
+        // Neither will ever finish: nobody is draining the peer. Closing
+        // cancels both, which is all this test needs.
+        gyro_handle_close(GYRO_HANDLE(this->client), OnClose);
+        RunFor(3);
+        this->client = nullptr;
+
+        EXPECT_EQ(first.status, GYRO_ECANCELED);
+        EXPECT_EQ(second.status, GYRO_ECANCELED);
     }
 
     // -----------------------------------------------------------------------

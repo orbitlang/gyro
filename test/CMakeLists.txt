@@ -44,4 +44,5 @@ endif ()
 
 gtest_discover_tests(gyro_tests
         DISCOVERY_TIMEOUT 30
+        DISCOVERY_MODE PRE_TEST
         PROPERTIES LABELS unit)
