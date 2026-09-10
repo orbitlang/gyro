@@ -119,8 +119,8 @@ GYRO_API int gyro_run(gyro_t *gyro);
  * results provided subsequently.
  *
  * This is what code performing its own work on a handle has to ask before
- * touching anything of the loop's, and it is the first half of what
- * gyro_handle_may_try() answers.
+ * touching anything of the loop's. Submitting an operation does not need it:
+ * a submit finds out for itself, and works either way.
  *
  * Until the loop has been run for the first time the answer is the thread that
  * created it, so a program that sets everything up before starting the loop is

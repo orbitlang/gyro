@@ -17,8 +17,16 @@ int gyro::NewRequest(GyroHandle *handle, const gyro_dir_t direction, const gyro_
     if (handle == nullptr || handle->gyro == nullptr)
         return GYRO_EINVAL;
 
-    if (handle->state == HandleState::CLOSING)
+    if (!IsActive(handle))
         return GYRO_EBADF;
+
+    // Every request on a handle carries the claim its submit took, and
+    // FinishRequest() gives it back. A request born without one drives the
+    // counter below zero, which is silent and permanent, so it is worth
+    // catching here rather than in whichever operation stops going inline
+    // hours later.
+    assert(PendingFor(handle, direction).load(std::memory_order_relaxed) > 0
+        && "a request must inherit a claim taken by gyro_handle_try_begin()");
 
     RequestIndex index{};
 
@@ -76,8 +84,11 @@ int gyro_request_submit(gyro_handle_t *handle, void *data, const gyro_rq_op_cb c
                         gyro_request_t *out_token, const long long timeout, const gyro_dir_t direction) {
     GyroRequest *req;
     auto status = NewRequest(handle, direction, cb_op, cb_user, data, &req);
-    if (status != GYRO_COMPLETED)
+    if (status != GYRO_COMPLETED) {
+        gyro_handle_try_end(handle, direction);
+
         return status;
+    }
 
     status = Submit(req, out_token, timeout);
     if (status != GYRO_COMPLETED)

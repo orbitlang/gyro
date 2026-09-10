@@ -24,7 +24,7 @@ using namespace gyro;
 
 /// Arms the handle for whatever its queues are still waiting on.
 static int Arm(const Gyro *loop, GyroHandle *handle) {
-    if (handle->state != HandleState::ACTIVE)
+    if (!IsActive(handle))
         return GYRO_COMPLETED;
 
     const uint32_t want = (handle->in.Count() ? EPOLLIN : 0) | (handle->out.Count() ? EPOLLOUT : 0);

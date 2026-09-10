@@ -57,7 +57,8 @@ typedef struct GyroTcp gyro_tcp_t;
  * @return GYRO_PENDING, GYRO_COMPLETED if a connection was already waiting, or
  *       a negative status.
  *
- * @note Thread-safe: a submit from elsewhere is handed to the loop and reports
+ * @note Thread-safe: a connection already waiting may be taken on the calling
+ *       thread, and the accept is otherwise handed to the loop and reported
  *       later.
  */
 GYRO_API int gyro_tcp_accept(gyro_tcp_t *tcp, gyro_tcp_t *client, long long timeout,
@@ -126,8 +127,10 @@ GYRO_API int gyro_tcp_listen(const gyro_tcp_t *tcp, int backlog);
  * GYRO_EOF says the peer shut the connection down cleanly. It is an event, not
  * a failure, and it is the only way to learn that no more bytes are coming.
  *
- * Reads on one handle are served in the order they were submitted, so a second
- * read never takes bytes belonging to the first.
+ * Reads submitted from one thread are served in that order, so a second read
+ * never takes bytes belonging to the first. Two threads reading one connection
+ * is an application-level race, and which of them gets the earlier bytes is
+ * undefined.
  *
  * @param bufs Regions to fill, in order. They and the array naming them must
  *           stay valid, and unmodified, until the operation reports.
@@ -142,8 +145,9 @@ GYRO_API int gyro_tcp_listen(const gyro_tcp_t *tcp, int backlog);
  * @return GYRO_PENDING, GYRO_COMPLETED when data was already waiting, or a
  *       negative status such as GYRO_EOF.
  *
- * @note Thread-safe: a submit from elsewhere is handed to the loop and reports
- *       later.
+ * @note Thread-safe: the read may be carried out on the calling thread when
+ *       nothing else is outstanding in that direction, and is otherwise handed
+ *       to the loop and reported later.
  */
 GYRO_API int gyro_tcp_read(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbufs, long long timeout,
                            gyro_rq_user_cb cb, void *data, gyro_request_t *token, size_t *transferred);
@@ -156,7 +160,13 @@ GYRO_API int gyro_tcp_read(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbufs
  * retry loop and GYRO_COMPLETED never means "part of it". The bytes counted on
  * a failure or a timeout are those that did make it out.
  *
- * Writes on one handle leave in the order they were submitted.
+ * Writes submitted from one thread leave in the order they were submitted,
+ * and each one leaves in one piece.
+ *
+ * Neither holds between threads. Two threads writing to one connection is an
+ * application-level race: gyro does not order them, and a write that the
+ * kernel only accepts in part can come out with the other thread's bytes in
+ * the middle of it. Anything that cares has to serialise its own writers.
  *
  * @param bufs Regions to send, in order. They and the array naming them must
  *           stay valid, and unmodified, until the operation reports, gyro
@@ -173,8 +183,9 @@ GYRO_API int gyro_tcp_read(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbufs
  * @return GYRO_PENDING, GYRO_COMPLETED when the whole of it was written at
  *       once, or a negative status such as GYRO_EPIPE.
  *
- * @note Thread-safe: a submit from elsewhere is handed to the loop and reports
- *       later.
+ * @note Thread-safe: the write may be carried out on the calling thread when
+ *       nothing else is outstanding in that direction, and is otherwise handed
+ *       to the loop and reported later.
  */
 GYRO_API int gyro_tcp_write(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbufs, long long timeout,
                             gyro_rq_user_cb cb, void *data, gyro_request_t *token, size_t *transferred);

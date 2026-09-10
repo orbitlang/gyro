@@ -235,7 +235,7 @@ namespace {
             std::this_thread::sleep_for(100ms);
 
             // Nothing will ever satisfy this read either, so the only thing
-            // that can end it is its deadline — and the deadline is not set
+            // that can end it is its deadline, and the deadline is not set
             // until the loop drains the queue. If the wakeup never arrives the
             // loop stays asleep and no timer is ever armed.
             EXPECT_EQ(gyro_tcp_read(this->client, &buf, 1, 50, Done, &report, nullptr, nullptr), GYRO_PENDING);
@@ -534,9 +534,9 @@ namespace {
 
         RunFor(1);
 
-        // Both endings travel the same path — the deadline is brought forward
-        // to now — so the only thing that keeps them apart is which of the two
-        // decided first.
+        // Both endings travel the same path, in that the deadline is brought
+        // forward to now, so the only thing that keeps them apart is which of
+        // the two decided first.
         EXPECT_EQ(report.status, GYRO_ECANCELED);
     }
 

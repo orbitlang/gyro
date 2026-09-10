@@ -239,6 +239,9 @@ void gyro::FinishRequest(Gyro *loop, GyroRequest *request) {
     assert(loop->request_count > 0);
 
     loop->request_count -= 1;
+
+    if (request->handle != nullptr)
+        gyro_handle_try_end(request->handle, request->direction);
 }
 
 // PUBLIC

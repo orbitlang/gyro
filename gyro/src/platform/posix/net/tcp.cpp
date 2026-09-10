@@ -278,7 +278,7 @@ static int CheckSubmittable(const GyroTcp *tcp) {
     if (tcp == nullptr)
         return GYRO_EINVAL;
 
-    if (tcp->handle.state != gyro::HandleState::ACTIVE)
+    if (!gyro::IsActive(&tcp->handle))
         return GYRO_EBADF;
 
     if (tcp->handle.handle == gyro::kInvalidSocket)
@@ -304,7 +304,9 @@ int gyro_tcp_accept(gyro_tcp_t *tcp, gyro_tcp_t *client, const long long timeout
     if (status != GYRO_COMPLETED)
         return status;
 
-    if (gyro_handle_may_try((GyroHandle *) tcp, GYRO_DIR_IN)) {
+    gyro::InlineGate gate((GyroHandle *) tcp, GYRO_DIR_IN);
+
+    if (gate.MayTry()) {
         status = AcceptOnce(tcp->handle.handle, (GyroHandle *) client);
         if (status != GYRO_PENDING)
             return status;
@@ -317,6 +319,10 @@ int gyro_tcp_accept(gyro_tcp_t *tcp, gyro_tcp_t *client, const long long timeout
         return status;
 
     req->io.peer = (GyroHandle *) client;
+
+    // From here the request owns the claim, and a Submit that fails has
+    // already dropped it through FinishRequest().
+    gate.Transfer();
 
     status = gyro::Submit(req, out_token, timeout);
     if (status != GYRO_COMPLETED)
@@ -331,7 +337,7 @@ int gyro_tcp_bind(gyro_tcp_t *tcp, const sockaddr *addr, const size_t addrlen, c
 
     assert(gyro_on_loop_thread(tcp->handle.gyro));
 
-    if (tcp->handle.state != gyro::HandleState::ACTIVE)
+    if (!gyro::IsActive(&tcp->handle))
         return GYRO_EBADF;
 
     const int status = OpenSocket(tcp, addr->sa_family);
@@ -361,12 +367,18 @@ int gyro_tcp_connect(gyro_tcp_t *tcp, const sockaddr *addr, const size_t addrlen
 
     assert(gyro_on_loop_thread(tcp->handle.gyro));
 
-    if (tcp->handle.state != gyro::HandleState::ACTIVE)
+    if (!gyro::IsActive(&tcp->handle))
         return GYRO_EBADF;
 
     const auto status = OpenSocket(tcp, addr->sa_family);
     if (status != GYRO_COMPLETED)
         return status;
+
+    // Claimed for the accounting rather than for exclusion: a connect is what
+    // makes the handle usable, so nothing else can be outstanding on it yet,
+    // and the attempt below is unconditional. What the claim is for is the
+    // request underneath, which has to have one to give back.
+    gyro::InlineGate gate((GyroHandle *) tcp, GYRO_DIR_OUT);
 
     do {
         if (connect(tcp->handle.handle, addr, (socklen_t) addrlen) == 0)
@@ -375,6 +387,8 @@ int gyro_tcp_connect(gyro_tcp_t *tcp, const sockaddr *addr, const size_t addrlen
 
     if (errno != EINPROGRESS && errno != EALREADY)
         return gyro::ErrorToStatus(errno);
+
+    gate.Transfer();
 
     return gyro_request_submit((GyroHandle *) tcp, data, TcpConnectOp, cb, out_token, timeout, GYRO_DIR_OUT);
 }
@@ -385,7 +399,7 @@ int gyro_tcp_listen(const gyro_tcp_t *tcp, const int backlog) {
 
     assert(gyro_on_loop_thread(tcp->handle.gyro));
 
-    if (tcp->handle.state != gyro::HandleState::ACTIVE)
+    if (!gyro::IsActive(&tcp->handle))
         return GYRO_EBADF;
 
     if (tcp->handle.handle == gyro::kInvalidSocket)
@@ -412,7 +426,8 @@ GYRO_API int gyro_tcp_read(gyro_tcp_t *tcp, gyro_buf_t *bufs, const unsigned int
     if (status != GYRO_COMPLETED)
         return status;
 
-    if (gyro_handle_may_try((GyroHandle *) tcp, GYRO_DIR_IN)) {
+    gyro::InlineGate gate((GyroHandle *) tcp, GYRO_DIR_IN);
+    if (gate.MayTry()) {
         const ssize_t n = ReadOnce(tcp->handle.handle, bufs, nbufs);
         if (n == 0)
             return GYRO_EOF;
@@ -435,6 +450,10 @@ GYRO_API int gyro_tcp_read(gyro_tcp_t *tcp, gyro_buf_t *bufs, const unsigned int
 
     request->io.buf = bufs;
     request->io.nbufs = nbufs;
+
+    // From here the request owns the claim, and a Submit that fails has
+    // already dropped it through FinishRequest().
+    gate.Transfer();
 
     status = gyro::Submit(request, token, timeout);
     if (status != GYRO_COMPLETED)
@@ -461,7 +480,8 @@ GYRO_API int gyro_tcp_write(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbuf
     size_t offset = 0;
     size_t sent = 0;
 
-    if (gyro_handle_may_try((GyroHandle *) tcp, GYRO_DIR_OUT)) {
+    gyro::InlineGate gate((GyroHandle *) tcp, GYRO_DIR_OUT);
+    if (gate.MayTry()) {
         do {
             SkipEmpty(&bufs, &nbufs, &offset);
 
@@ -495,6 +515,10 @@ GYRO_API int gyro_tcp_write(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbuf
     request->io.nbufs = nbufs;
     request->io.offset = offset;
     request->io.transferred = sent;
+
+    // From here the request owns the claim, and a Submit that fails has
+    // already dropped it through FinishRequest().
+    gate.Transfer();
 
     status = gyro::Submit(request, token, timeout);
     if (status != GYRO_COMPLETED)

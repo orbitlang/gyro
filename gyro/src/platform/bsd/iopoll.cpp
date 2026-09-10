@@ -132,7 +132,7 @@ int gyro::IOPoll(Gyro *loop, const long long timeout) {
         if (events[i].flags & EV_ERROR) {
             const int status = ErrorToStatus((int) events[i].data);
 
-            if (handle->state != HandleState::CLOSING) {
+            if (IsActive(handle)) {
                 if (events[i].data == EBADF) {
                     ReportFailToQueue(handle, GYRO_DIR_IN, status);
                     ReportFailToQueue(handle, GYRO_DIR_OUT, status);

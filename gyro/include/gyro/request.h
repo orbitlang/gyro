@@ -104,6 +104,12 @@ GYRO_API int gyro_request_cancel(const gyro_t *gyro, gyro_request_t token);
  * block. @p cb_user is what gyro_op_complete() then invokes, and is where the
  * caller learns the outcome.
  *
+ * The caller must hold a claim on @p direction, taken with
+ * gyro_handle_try_begin(), and this consumes it: the request carries it until
+ * it reports, and a submit that fails before a request exists gives it back
+ * itself. So a caller hands the claim over here and never touches it again,
+ * whatever the outcome.
+ *
  * @param data Passed back to @p cb_user untouched.
  * @param out_token Receives the token naming the operation. May be NULL when
  *                the caller will never cancel it.
@@ -115,7 +121,8 @@ GYRO_API int gyro_request_cancel(const gyro_t *gyro, gyro_request_t token);
  *       in which case no callback will fire.
  *
  * @note Thread-safe: a submit from elsewhere is handed to the loop and reports
- *       later.
+ *       later. Attempting the operation on the calling thread first is the
+ *       caller's to do, between the claim and this call.
  */
 GYRO_API int gyro_request_submit(gyro_handle_t *handle, void *data, const gyro_rq_op_cb cb_op, const gyro_rq_user_cb cb_user,
                                  gyro_request_t *out_token, const long long timeout, const gyro_dir_t direction);

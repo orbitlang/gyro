@@ -46,40 +46,47 @@ typedef void (*gyro_close_cb)(gyro_handle_t *handle);
 GYRO_API gyro_t *gyro_handle_loop(const gyro_handle_t *handle);
 
 /**
- * @brief Tells whether an operation may be attempted directly, here and now.
+ * @brief Claims a direction, and says whether the operation may go inline.
  *
- * The whole precondition of the fast path, in one place: the caller is on the
- * loop's own thread, the handle is still open, and nothing is queued ahead of
- * it in that direction. Each of the three answers a different way of going
- * wrong; touching the loop's state from outside its thread, working a
- * descriptor it has already handed back, and taking bytes that belong to an
- * operation submitted earlier.
+ * Always takes the claim, whichever way the answer goes: a caller told no is
+ * about to queue an operation, and an operation waiting to be served is
+ * exactly what the claim counts. Only one caller can be told yes, so only one
+ * can be inside the syscall.
  *
- * A submit that gets a yes may carry the syscall out itself and report the
- * result at once. A no is not a failure: it means the operation has to be
- * handed to the loop like any other.
- *
- * Safe to call from any thread: answering this is what it is for.
+ * What is taken here has to be given back exactly once, and there are only
+ * two ways to do it. Either the operation finishes here and now and the caller
+ * calls gyro_handle_try_end(), or the operation is submitted and the request
+ * carries the claim until it reports. Every path that leaves in between,
+ * including one that could not allocate a request or was refused by the
+ * submit, has to end it: a claim that is never given back leaves the direction
+ * looking busy for good, and that handle silently loses its fast path for the
+ * rest of its life.
  *
  * @param direction Which of the handle's two streams the operation belongs to.
- * @return Non-zero when the attempt is allowed.
+ * @return Non-zero when the caller owns the direction and may attempt the
+ *       syscall itself. Zero means the claim was still taken, and the
+ *       operation has to be queued rather than attempted.
+ *
+ * @note Thread-safe.
  */
-GYRO_API int gyro_handle_may_try(const gyro_handle_t *handle, gyro_dir_t direction);
+GYRO_API int gyro_handle_try_begin(gyro_handle_t *handle, gyro_dir_t direction);
 
 /**
- * @brief Returns how many operations are waiting in one direction.
+ * @brief Returns how many operations are outstanding in one direction.
  *
- * For code that needs to know the current queue depth, for example to decide whether
- * to apply backpressure, rather than to determine whether an operation may proceed immediately.
- * That decision is handled by `gyro_handle_may_try()`, which evaluates
- * this value together with the other required conditions.
- *
- * @warning Must be called on the loop's own thread. The count belongs to the
- * loop and is not published for anybody else to read.
+ * Everything submitted and not yet reported, including what another thread
+ * has handed to the loop and the loop has not picked up yet. For deciding
+ * whether to apply backpressure, and not for deciding whether an operation
+ * may go ahead here and now: a zero read here says nothing about the moment
+ * after, and gyro_handle_try_begin() is what settles that question by
+ * claiming the direction rather than asking about it.
  *
  * @param handle Handle to inspect.
- * @param direction Which of its two queues to count.
- * @return The number of operations waiting, zero when the direction is idle.
+ * @param direction Which of its two streams to count.
+ * @return The number outstanding, zero when the direction is idle.
+ *
+ * @note Thread-safe. A count read from another thread was true when it was
+ *       read and says nothing about the moment after.
  */
 GYRO_API unsigned int gyro_handle_pending(const gyro_handle_t *handle, gyro_dir_t direction);
 
@@ -91,6 +98,11 @@ GYRO_API unsigned int gyro_handle_pending(const gyro_handle_t *handle, gyro_dir_
  * on a closing handle does nothing, and the callback still fires exactly once.
  *
  * @param cb Invoked when the handle is gone. May be NULL.
+ *
+ * @warning Closing a handle another thread may still be submitting on is
+ * undefined. gyro cannot guard it: the handle is freed once the last operation
+ * reports, so a submit that arrives after that reads memory that is gone.
+ * Whoever closes has to know that nobody else is still using it.
  *
  * @note Loop-affine: it walks both queues and hands the handle to the loop for
  *       burial.
@@ -115,6 +127,17 @@ GYRO_API void *gyro_handle_data(const gyro_handle_t *handle);
  *       what guards it is the caller's business.
  */
 GYRO_API void gyro_handle_set_data(gyro_handle_t *handle, void *data);
+
+/**
+ * @brief Gives back a claim taken by gyro_handle_try_begin().
+ *
+ * For an operation that ended on the calling thread and left nothing behind.
+ * An operation that was submitted must not call this: its request holds the
+ * claim, and releases it when it reports.
+ *
+ * @note Thread-safe.
+ */
+GYRO_API void gyro_handle_try_end(gyro_handle_t *handle, gyro_dir_t direction);
 
 #ifdef __cplusplus
 }

@@ -14,23 +14,12 @@ gyro_t *gyro_handle_loop(const gyro_handle_t *handle) {
     return handle->gyro;
 }
 
-int gyro_handle_may_try(const gyro_handle_t *handle, const gyro_dir_t direction) {
-    if (handle == nullptr)
-        return 0;
-
-    // Asked first, because every other question below reads state that only
-    // the loop's thread may look at.
-    if (!gyro_on_loop_thread(handle->gyro))
-        return 0;
-
-    if (handle->state != gyro::HandleState::ACTIVE)
-        return 0;
-
-    return gyro::QueueFor(handle, direction)->Count() == 0;
+int gyro_handle_try_begin(gyro_handle_t *handle, const gyro_dir_t direction) {
+    return gyro::PendingFor(handle, direction).fetch_add(1, std::memory_order_acquire) == 0;
 }
 
 unsigned int gyro_handle_pending(const gyro_handle_t *handle, const gyro_dir_t direction) {
-    return gyro::QueueFor(handle, direction)->Count();
+    return gyro::PendingFor(handle, direction).load(std::memory_order_acquire);
 }
 
 void gyro_handle_close(gyro_handle_t *handle, const gyro_close_cb cb) {
@@ -38,11 +27,11 @@ void gyro_handle_close(gyro_handle_t *handle, const gyro_close_cb cb) {
 
     auto *h = handle;
 
-    if (h->state == gyro::HandleState::CLOSING)
+    if (!gyro::IsActive(h))
         return;
 
     h->cb_close = cb;
-    h->state = gyro::HandleState::CLOSING;
+    h->state.store(gyro::HandleState::CLOSING, std::memory_order_release);
 
     for (auto *cursor = h->in.GetHead(); cursor != nullptr; cursor = cursor->queue.next)
         gyro::CancelRequest(cursor);
@@ -59,5 +48,9 @@ void *gyro_handle_data(const gyro_handle_t *handle) {
 
 void gyro_handle_set_data(gyro_handle_t *handle, void *data) {
     handle->data = data;
+}
+
+void gyro_handle_try_end(gyro_handle_t *handle, const gyro_dir_t direction) {
+    gyro::PendingFor(handle, direction).fetch_sub(1, std::memory_order_release);
 }
 } // extern "C"
