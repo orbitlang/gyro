@@ -40,6 +40,8 @@ typedef void (*gyro_close_cb)(gyro_handle_t *handle);
 
 /**
  * @brief Returns the loop the handle belongs to.
+ *
+ * @note Thread-safe: the loop a handle belongs to is fixed when it is created.
  */
 GYRO_API gyro_t *gyro_handle_loop(const gyro_handle_t *handle);
 
@@ -89,6 +91,9 @@ GYRO_API unsigned int gyro_handle_pending(const gyro_handle_t *handle, gyro_dir_
  * on a closing handle does nothing, and the callback still fires exactly once.
  *
  * @param cb Invoked when the handle is gone. May be NULL.
+ *
+ * @note Loop-affine: it walks both queues and hands the handle to the loop for
+ *       burial.
  */
 GYRO_API void gyro_handle_close(gyro_handle_t *handle, gyro_close_cb cb);
 
@@ -97,11 +102,17 @@ GYRO_API void gyro_handle_close(gyro_handle_t *handle, gyro_close_cb cb);
  *
  * Distinct from the data passed to a single operation: this one belongs to the
  * resource and is shared by every operation performed on it.
+ *
+ * @note Thread-safe as far as gyro is concerned: it never reads this field, so
+ *       what guards it is the caller's business.
  */
 GYRO_API void *gyro_handle_data(const gyro_handle_t *handle);
 
 /**
  * @brief Attaches user data to the handle.
+ *
+ * @note Thread-safe as far as gyro is concerned: it never reads this field, so
+ *       what guards it is the caller's business.
  */
 GYRO_API void gyro_handle_set_data(gyro_handle_t *handle, void *data);
 

@@ -2,6 +2,7 @@
 //
 // Licensed under the Apache License v2.0
 
+#include <cassert>
 #include <chrono>
 
 #include <gyro/error.h>
@@ -267,6 +268,8 @@ gyro_t *gyro_new(const gyro_allocator_t *allocator) {
 int gyro_free(gyro_t *gyro) {
     if (gyro == nullptr)
         return GYRO_COMPLETED;
+
+    assert(gyro_on_loop_thread(gyro));
 
     // Releasing now would drop operations that still owe a callback, and
     // handles whose descriptors are still open. Refuse, and leave everything

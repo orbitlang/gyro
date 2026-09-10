@@ -2,6 +2,8 @@
 //
 // Licensed under the Apache License v2.0
 
+#include <cassert>
+
 #include <gyro/error.h>
 #include <gyro/loop.h>
 #include <gyro/request.h>
@@ -57,6 +59,8 @@ void gyro::CancelRequest(GyroRequest *request) {
 
 extern "C" {
 int gyro_request_cancel(const gyro_t *gyro, const gyro_request_t token) {
+    assert(gyro_on_loop_thread(gyro));
+
     RequestIndex tk{};
 
     tk._opaque = token._opaque;
@@ -83,6 +87,11 @@ int gyro_request_submit(gyro_handle_t *handle, void *data, const gyro_rq_op_cb c
 }
 
 void gyro_op_complete(gyro_op_t *op, const int status, const size_t transferred) {
+    // Unlinking, dropping a timer and returning a slot to the store are three
+    // pieces of the loop's own state. A driver that did its work elsewhere has
+    // to come back here first.
+    assert(gyro_on_loop_thread(op->loop));
+
     if (op->handle != nullptr) {
         auto *queue = QueueFor(op->handle, op->direction);
         queue->Remove(op);

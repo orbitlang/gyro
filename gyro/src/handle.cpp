@@ -2,6 +2,8 @@
 //
 // Licensed under the Apache License v2.0
 
+#include <cassert>
+
 #include <gyro/loop.h>
 
 #include "gyro_internal.h"
@@ -32,6 +34,8 @@ unsigned int gyro_handle_pending(const gyro_handle_t *handle, const gyro_dir_t d
 }
 
 void gyro_handle_close(gyro_handle_t *handle, const gyro_close_cb cb) {
+    assert(gyro_on_loop_thread(handle->gyro));
+
     auto *h = handle;
 
     if (h->state == gyro::HandleState::CLOSING)

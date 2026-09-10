@@ -37,6 +37,8 @@ typedef struct {
  *
  * malloc and free, with no context. Statically allocated, so the pointer is
  * always valid and needs no cleanup.
+ *
+ * @note Thread-safe: the returned allocator is static.
  */
 GYRO_API const gyro_allocator_t *gyro_default_allocator(void);
 

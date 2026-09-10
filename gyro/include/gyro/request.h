@@ -84,8 +84,11 @@ static inline gyro_request_t gyro_request_invalid(void) {
  * on an operation that has already finished, on a stale token, or on an
  * invalid one. Cancelling twice is the same as cancelling once.
  *
- * @warning Must be called on the loop's own thread, from a callback or from
- * between runs. The thread-safe form is not implemented yet.
+ * @note Loop-affine **for now**. It is meant to be callable from anywhere, a
+ *       fiber unwinding on a worker thread being the motivating case, but that
+ *       needs the token handed to the loop rather than acted on in place, and
+ *       that route does not exist yet. Calling it from elsewhere today reaches
+ *       into the timer heap from outside the loop's thread.
  */
 GYRO_API int gyro_request_cancel(const gyro_t *gyro, gyro_request_t token);
 
@@ -103,13 +106,16 @@ GYRO_API int gyro_request_cancel(const gyro_t *gyro, gyro_request_t token);
  *
  * @param data Passed back to @p cb_user untouched.
  * @param out_token Receives the token naming the operation. May be NULL when
- *                  the caller will never cancel it.
+ *                the caller will never cancel it.
  * @param timeout Milliseconds before the operation is given up on, or 0 to
- *                let it wait indefinitely. A deadline that arrives reports
- *                GYRO_ETIMEDOUT; a cancellation somebody asked for reports
- *                GYRO_ECANCELED, even when the operation also had a deadline.
+ *              let it wait indefinitely. A deadline that arrives reports
+ *              GYRO_ETIMEDOUT; a cancellation somebody asked for reports
+ *              GYRO_ECANCELED, even when the operation also had a deadline.
  * @return GYRO_PENDING once the loop owns the operation, or a negative status,
- *         in which case no callback will fire.
+ *       in which case no callback will fire.
+ *
+ * @note Thread-safe: a submit from elsewhere is handed to the loop and reports
+ *       later.
  */
 GYRO_API int gyro_request_submit(gyro_handle_t *handle, void *data, const gyro_rq_op_cb cb_op, const gyro_rq_user_cb cb_user,
                                  gyro_request_t *out_token, const long long timeout, const gyro_dir_t direction);
@@ -125,6 +131,10 @@ GYRO_API int gyro_request_submit(gyro_handle_t *handle, void *data, const gyro_r
  * @param op The operation being reported. Invalid once this returns.
  * @param status GYRO_COMPLETED, or a negative code such as GYRO_EOF.
  * @param transferred Bytes moved by the operation as a whole.
+ *
+ * @note Loop-affine, and strictly: it unlinks from a handle queue, drops a
+ *       timer, and returns a slot to the store. A driver that does its work
+ *       on a thread of its own cannot report from there.
  */
 GYRO_API void gyro_op_complete(gyro_op_t *op, int status, size_t transferred);
 

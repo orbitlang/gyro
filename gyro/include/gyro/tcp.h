@@ -39,8 +39,8 @@ typedef struct GyroTcp gyro_tcp_t;
  * @brief Takes the next incoming connection.
  *
  * The connection lands in @p client, which the caller creates beforehand with
- * gyro_tcp_new() and owns from then on — including when the operation fails, in
- * which case @p client is untouched and can be reused or closed. Handing it in
+ * gyro_tcp_new() and owns from then on, including when the operation fails; in
+ * that case @p client is untouched and can be reused or closed. Handing it in
  * rather than receiving it back is what lets the same call work on a completion
  * port, where the socket has to exist before the accept is posted, and it keeps
  * the callback signature the same as every other operation's.
@@ -49,13 +49,16 @@ typedef struct GyroTcp gyro_tcp_t;
  * would.
  *
  * @param timeout Milliseconds to wait for a connection, or 0 to wait
- *                indefinitely. A deadline that arrives reports
- *                GYRO_ETIMEDOUT, which is how it is told apart from a
- *                cancellation somebody asked for.
+ *              indefinitely. A deadline that arrives reports
+ *              GYRO_ETIMEDOUT, which is how it is told apart from a
+ *              cancellation somebody asked for.
  * @param cb Reports the outcome. Its `transferred` is always 0.
  * @param out_token Receives the token naming the operation, or NULL.
  * @return GYRO_PENDING, GYRO_COMPLETED if a connection was already waiting, or
- *         a negative status.
+ *       a negative status.
+ *
+ * @note Thread-safe: a submit from elsewhere is handed to the loop and reports
+ *       later.
  */
 GYRO_API int gyro_tcp_accept(gyro_tcp_t *tcp, gyro_tcp_t *client, long long timeout,
                              gyro_rq_user_cb cb, void *data, gyro_request_t *out_token);
@@ -68,6 +71,8 @@ GYRO_API int gyro_tcp_accept(gyro_tcp_t *tcp, gyro_tcp_t *client, long long time
  *
  * @param flags Zero, or GYRO_TCP_REUSEADDR.
  * @return GYRO_COMPLETED, or a negative status.
+ *
+ * @note Loop-affine: it opens the descriptor and writes it into the handle.
  */
 GYRO_API int gyro_tcp_bind(gyro_tcp_t *tcp, const struct sockaddr *addr, size_t addrlen, unsigned int flags);
 
@@ -80,16 +85,19 @@ GYRO_API int gyro_tcp_bind(gyro_tcp_t *tcp, const struct sockaddr *addr, size_t 
  *
  * @param addr Peer to reach. Only read for the duration of the call.
  * @param timeout Milliseconds to wait, or 0 to wait as long as the OS does.
- *                A connection is not established any faster by giving up on it
- *                sooner, so this is about how long the caller is prepared to
- *                block, not about the network. A deadline that arrives reports
- *                GYRO_ETIMEDOUT.
+ *              A connection is not established any faster by giving up on it
+ *              sooner, so this is about how long the caller is prepared to
+ *              block, not about the network. A deadline that arrives reports
+ *              GYRO_ETIMEDOUT.
  * @param cb Reports the outcome. Its `transferred` is always 0.
  * @param out_token Receives the token naming the operation, or NULL. Set to an
- *                  invalid token unless GYRO_PENDING is returned.
+ *                invalid token unless GYRO_PENDING is returned.
  * @return GYRO_PENDING, GYRO_COMPLETED when the connection was established at
- *         once — which happens over loopback — or a negative status such as
- *         GYRO_ECONNREFUSED.
+ *       once (which happens over loopback), or a negative status such as
+ *       GYRO_ECONNREFUSED.
+ *
+ * @note Loop-affine: unlike the other operations it opens the descriptor,
+ *       which is the loop's to own.
  */
 GYRO_API int gyro_tcp_connect(gyro_tcp_t *tcp, const struct sockaddr *addr, size_t addrlen, long long timeout,
                               gyro_rq_user_cb cb, void *data, gyro_request_t *out_token);
@@ -102,6 +110,8 @@ GYRO_API int gyro_tcp_connect(gyro_tcp_t *tcp, const struct sockaddr *addr, size
  *
  * @param backlog How many connections the kernel may hold before refusing more.
  * @return GYRO_COMPLETED, or a negative status.
+ *
+ * @note Loop-affine.
  */
 GYRO_API int gyro_tcp_listen(const gyro_tcp_t *tcp, int backlog);
 
@@ -110,8 +120,8 @@ GYRO_API int gyro_tcp_listen(const gyro_tcp_t *tcp, int backlog);
  *
  * Short by design: it reports as soon as one byte is there, up to the room the
  * regions offer, and never waits for them to fill. Reading a known number of
- * bytes is a layer on top, built by reading again — not something the loop can
- * do on the caller's behalf without holding data it has already been given.
+ * bytes is a layer on top, built by reading again. It is not something the loop
+ * can do on the caller's behalf without holding data it has already been given.
  *
  * GYRO_EOF says the peer shut the connection down cleanly. It is an event, not
  * a failure, and it is the only way to learn that no more bytes are coming.
@@ -120,17 +130,20 @@ GYRO_API int gyro_tcp_listen(const gyro_tcp_t *tcp, int backlog);
  * read never takes bytes belonging to the first.
  *
  * @param bufs Regions to fill, in order. They and the array naming them must
- *             stay valid, and unmodified, until the operation reports.
+ *           stay valid, and unmodified, until the operation reports.
  * @param timeout Milliseconds before the read is given up on, or 0 for none.
- *                A deadline that arrives reports GYRO_ETIMEDOUT, distinct from
- *                the GYRO_ECANCELED of a cancellation somebody asked for.
+ *              A deadline that arrives reports GYRO_ETIMEDOUT, distinct from
+ *              the GYRO_ECANCELED of a cancellation somebody asked for.
  * @param cb Reports the outcome. Not called when GYRO_COMPLETED is returned.
  * @param token Receives the token naming the operation, or NULL. Set to an
- *              invalid token unless GYRO_PENDING is returned.
+ *            invalid token unless GYRO_PENDING is returned.
  * @param transferred Receives the byte count when the read is satisfied at
- *                    once, or NULL. Set to 0 in every other case.
+ *                  once, or NULL. Set to 0 in every other case.
  * @return GYRO_PENDING, GYRO_COMPLETED when data was already waiting, or a
- *         negative status such as GYRO_EOF.
+ *       negative status such as GYRO_EOF.
+ *
+ * @note Thread-safe: a submit from elsewhere is handed to the loop and reports
+ *       later.
  */
 GYRO_API int gyro_tcp_read(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbufs, long long timeout,
                            gyro_rq_user_cb cb, void *data, gyro_request_t *token, size_t *transferred);
@@ -146,19 +159,22 @@ GYRO_API int gyro_tcp_read(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbufs
  * Writes on one handle leave in the order they were submitted.
  *
  * @param bufs Regions to send, in order. They and the array naming them must
- *             stay valid, and unmodified, until the operation reports, gyro
- *             hands them to the kernel rather than copying them, and leaves the
- *             array exactly as it found it.
+ *           stay valid, and unmodified, until the operation reports, gyro
+ *           hands them to the kernel rather than copying them, and leaves the
+ *           array exactly as it found it.
  * @param timeout Milliseconds before the write is given up on, or 0 for none.
- *                A write that times out has usually sent something already, and
- *                reports GYRO_ETIMEDOUT along with how much.
+ *              A write that times out has usually sent something already, and
+ *              reports GYRO_ETIMEDOUT along with how much.
  * @param cb Reports the outcome. Not called when GYRO_COMPLETED is returned.
  * @param token Receives the token naming the operation, or NULL. Set to an
- *              invalid token unless GYRO_PENDING is returned.
+ *            invalid token unless GYRO_PENDING is returned.
  * @param transferred Receives the byte count when everything went out in one
- *                    go, or NULL. Set to 0 in every other case.
+ *                  go, or NULL. Set to 0 in every other case.
  * @return GYRO_PENDING, GYRO_COMPLETED when the whole of it was written at
- *         once, or a negative status such as GYRO_EPIPE.
+ *       once, or a negative status such as GYRO_EPIPE.
+ *
+ * @note Thread-safe: a submit from elsewhere is handed to the loop and reports
+ *       later.
  */
 GYRO_API int gyro_tcp_write(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbufs, long long timeout,
                             gyro_rq_user_cb cb, void *data, gyro_request_t *token, size_t *transferred);
@@ -177,7 +193,9 @@ GYRO_API int gyro_tcp_write(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbuf
  * ends up being polled. Use gyro_handle_close() instead.
  *
  * @return The socket, or GYRO_INVALID_SOCKET while the handle has none, which
- *         is the case until gyro_tcp_bind() or gyro_tcp_connect() opens one.
+ *       is the case until gyro_tcp_bind() or gyro_tcp_connect() opens one.
+ *
+ * @note Loop-affine: the descriptor is opened and closed by the loop.
  */
 GYRO_API gyro_socket_t gyro_tcp_fileno(const gyro_tcp_t *tcp);
 
@@ -189,6 +207,8 @@ GYRO_API gyro_socket_t gyro_tcp_fileno(const gyro_tcp_t *tcp);
  * is still closed with gyro_close().
  *
  * @return The handle, or NULL if the allocator refused.
+ *
+ * @note Loop-affine.
  */
 GYRO_API gyro_tcp_t *gyro_tcp_new(gyro_t *gyro);
 #ifdef __cplusplus

@@ -8,6 +8,23 @@
 #include <gyro/allocator.h>
 #include <gyro/export.h>
 
+/**
+ * @file loop.h
+ *
+ * **Loop affinity.** Nearly everything gyro owns is touched by one thread and no
+ * other: the handle queues, the timer heap, the request store. Every entry point
+ * in the public API therefore says which side of that line it falls on:
+ *
+ * - *Loop-affine* means the loop's own thread: the one that called gyro_run(),
+ *   or the one that created the loop while it has never run.
+ *   gyro_on_loop_thread() answers the question, and debug builds assert on it.
+ * - *Thread-safe* means any thread at all.
+ *
+ * Submitting is the deliberate exception: an operation offered from elsewhere
+ * is handed to the loop and carried out there, so a worker can start work
+ * without knowing who owns what.
+ */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -34,9 +51,12 @@ typedef struct Gyro gyro_t;
  * @brief Creates a loop.
  *
  * @param allocator Every allocation the loop makes goes through it, and it must
- *                  outlive the loop. NULL for the default one.
+ *                outlive the loop. NULL for the default one.
  * @return The loop, or NULL if the allocator refused or the backend could not
- *         be opened.
+ *       be opened.
+ *
+ * @note Thread-safe: nothing exists to share yet. The thread that calls this
+ *       is the loop's own until gyro_run() is called somewhere else.
  */
 GYRO_API gyro_t *gyro_new(const gyro_allocator_t *allocator);
 
@@ -60,8 +80,10 @@ GYRO_API gyro_t *gyro_new(const gyro_allocator_t *allocator);
  * simply leaks, exactly as it would have before.
  *
  * @return GYRO_COMPLETED once the loop is gone, or GYRO_EBUSY if it still had
- *         work in it, in which case **nothing was released** and the loop is
- *         still the caller's to wind down and free.
+ *       work in it, in which case **nothing was released** and the loop is
+ *       still the caller's to wind down and free.
+ *
+ * @note Loop-affine.
  */
 GYRO_API int gyro_free(gyro_t *gyro);
 
@@ -78,9 +100,12 @@ GYRO_API int gyro_free(gyro_t *gyro);
  * is running has no effect.
  *
  * @return GYRO_COMPLETED when the work ran out, GYRO_STOPPED when gyro_stop()
- *         asked for it, or a negative status if the backend failed. The first
- *         two are told apart because they mean different things to whoever
- *         embeds the loop: one is the end of the job, the other a decision.
+ *       asked for it, or a negative status if the backend failed. The first
+ *       two are told apart because they mean different things to whoever
+ *       embeds the loop: one is the end of the job, the other a decision.
+ *
+ * @note Loop-affine, and the call that decides it: the thread running the loop
+ *       is the loop's thread from here on.
  */
 GYRO_API int gyro_run(gyro_t *gyro);
 

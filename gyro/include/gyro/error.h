@@ -63,6 +63,8 @@ typedef enum {
  * @brief Returns a human-readable description of a code.
  *
  * Never returns NULL: an unrecognised code yields a generic description.
+ *
+ * @note Thread-safe: it reads a table that never changes.
  */
 GYRO_API const char *gyro_strerror(int code);
 
@@ -71,6 +73,8 @@ GYRO_API const char *gyro_strerror(int code);
  *
  * Meant for logs, and for a host runtime deriving its own error or exception
  * names from gyro's; gyro_strerror() provides the wording for a message.
+ *
+ * @note Thread-safe: it reads a table that never changes.
  */
 GYRO_API const char *gyro_err_name(int code);
 
