@@ -98,6 +98,18 @@ static void DrainMPSC(Gyro *loop) {
 
         ordered->queue.next = nullptr;
 
+        if (ordered->kind == RequestKind::CANCEL) {
+            auto *target = loop->requests.Resolve(ordered->io.target);
+            if (target != nullptr)
+                CancelRequest(target);
+
+            loop->requests.Release(ordered);
+
+            ordered = next;
+
+            continue;
+        }
+
         const auto cb = ordered->cb_user;
         auto *handle = ordered->handle;
         auto *data = ordered->data;
@@ -184,17 +196,7 @@ int gyro::Submit(GyroRequest *request, gyro_request_t *out_token, const long lon
         // no deadline at all.
         request->timer.timeout = timeout;
 
-        auto *last = loop->mpsc_queue.load(std::memory_order_relaxed);
-
-        do
-            request->queue.next = last;
-        while (!loop->mpsc_queue.compare_exchange_strong(last,
-                                                         request,
-                                                         std::memory_order_release,
-                                                         std::memory_order_relaxed));
-
-        if (!loop->wakeup_pending.test_and_set(std::memory_order_acquire))
-            IOWakeup(loop);
+        PostToLoop(loop, request);
 
         return GYRO_PENDING;
     }
@@ -253,6 +255,22 @@ void gyro::FinishRequest(Gyro *loop, GyroRequest *request) {
 
     if (request->handle != nullptr)
         gyro_handle_try_end(request->handle, request->direction);
+}
+
+void gyro::PostToLoop(Gyro *loop, GyroRequest *request) {
+    request->loop = loop;
+
+    auto *last = loop->mpsc_queue.load(std::memory_order_relaxed);
+
+    do
+        request->queue.next = last;
+    while (!loop->mpsc_queue.compare_exchange_strong(last,
+                                                     request,
+                                                     std::memory_order_release,
+                                                     std::memory_order_relaxed));
+
+    if (!loop->wakeup_pending.test_and_set(std::memory_order_acquire))
+        IOWakeup(loop);
 }
 
 // PUBLIC

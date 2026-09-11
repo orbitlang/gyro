@@ -84,13 +84,21 @@ static inline gyro_request_t gyro_request_invalid(void) {
  * on an operation that has already finished, on a stale token, or on an
  * invalid one. Cancelling twice is the same as cancelling once.
  *
- * @note Loop-affine **for now**. It is meant to be callable from anywhere, a
- *       fiber unwinding on a worker thread being the motivating case, but that
- *       needs the token handed to the loop rather than acted on in place, and
- *       that route does not exist yet. Calling it from elsewhere today reaches
- *       into the timer heap from outside the loop's thread.
+ * The request is never touched from here: the token is handed to the loop,
+ * which resolves it and acts on it in its own thread. That is also what
+ * makes the order safe. A token exists only once its submit has returned,
+ * and that submit had already handed the operation to the loop, so a
+ * cancellation always reaches the loop behind the operation it names and
+ * can never be acted on before the operation is there to be found.
+ *
+ * @return GYRO_COMPLETED, or GYRO_ENOMEM in the one case where nothing could
+ *       be done: the note carrying the token to the loop has to come from the
+ *       request store, and the store could not provide one.
+ *
+ * @note Thread-safe. From the loop's own thread it takes effect on the next
+ *       turn, exactly as it does from anywhere else.
  */
-GYRO_API int gyro_request_cancel(const gyro_t *gyro, gyro_request_t token);
+GYRO_API int gyro_request_cancel(gyro_t *gyro, gyro_request_t token);
 
 /**
  * @brief Submits an operation on a handle.

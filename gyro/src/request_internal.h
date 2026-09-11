@@ -8,6 +8,26 @@
 #include <gyro/buf.h>
 #include <gyro/request.h>
 
+namespace gyro {
+    enum class RequestKind : uint16_t {
+        OP = 0, // Default, normal operation
+        CANCEL
+    };
+
+    struct RequestIndex {
+        struct Fields {
+            uint64_t generation: 40;
+            uint64_t index: 24;
+        };
+
+        union {
+            Fields fields;
+
+            uint64_t _opaque;
+        };
+    };
+}
+
 struct GyroRequest {
     gyro_t *loop;
 
@@ -44,9 +64,12 @@ struct GyroRequest {
 
     struct {
         union {
+            GyroHandle *peer;
+
             gyro_buf_t *buf;
 
-            GyroHandle *peer;
+            /// Target request to operate
+            gyro::RequestIndex target;
         };
 
         unsigned int nbufs;
@@ -59,26 +82,15 @@ struct GyroRequest {
     /// Completion status: GYRO_COMPLETED if still active, otherwise the reason
     /// the operation was terminated. Set when the decision is made and retained
     /// until reported, which may be delayed on completion port implementations.
-    int abandoned;
+    short abandoned;
+
+    gyro::RequestKind kind;
 
     /// Which queue of that handle holds it.
     gyro_dir_t direction;
 };
 
 namespace gyro {
-    struct RequestIndex {
-        struct Fields {
-            uint64_t generation: 40;
-            uint64_t index: 24;
-        };
-
-        union {
-            Fields fields;
-
-            uint64_t _opaque;
-        };
-    };
-
     int NewRequest(GyroHandle *handle, gyro_dir_t direction, gyro_rq_op_cb cb_op,
                    gyro_rq_user_cb cb_user, void *data, GyroRequest **out_request);
 

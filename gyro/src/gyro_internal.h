@@ -181,6 +181,8 @@ namespace gyro {
      * a loop blocking with no deadline can still be told anything at all.
      */
     void IOWakeup(const Gyro *loop);
+
+    void PostToLoop(Gyro *loop, GyroRequest *request);
 }
 
 #endif // !GYRO_GYRO_INTERNAL_H_

@@ -66,16 +66,20 @@ void gyro::CancelRequest(GyroRequest *request) {
 }
 
 extern "C" {
-int gyro_request_cancel(const gyro_t *gyro, const gyro_request_t token) {
-    assert(gyro_on_loop_thread(gyro));
-
+int gyro_request_cancel(gyro_t *gyro, const gyro_request_t token) {
     RequestIndex tk{};
 
-    tk._opaque = token._opaque;
+    if (!GYRO_REQUEST_IS_VALID(token))
+        return GYRO_COMPLETED;
 
-    auto *request = gyro->requests.Resolve(tk);
-    if (request != nullptr)
-        CancelRequest(request);
+    auto *req = gyro->requests.Acquire(tk);
+    if (req == nullptr)
+        return GYRO_ENOMEM;
+
+    req->io.target._opaque = token._opaque;
+    req->kind = RequestKind::CANCEL;
+
+    PostToLoop(gyro, req);
 
     return GYRO_COMPLETED;
 }
