@@ -57,7 +57,14 @@ static void CloseHandles(Gyro *loop) {
     GyroHandle **link = &loop->closing_queue;
 
     while (*link != nullptr) {
-        if ((*link)->in.Count() != 0 || (*link)->out.Count() != 0) {
+        // The claims, not the queues. A claim is held by everything that exists
+        // for this handle anywhere: queued here, still on the wakeup queue, or
+        // in the middle of an inline attempt on another thread. Zero claims
+        // implies empty queues, and it is the only condition under which
+        // freeing the handle cannot pull memory out from under something that
+        // still has a pointer to it.
+        if (PendingFor(*link, GYRO_DIR_IN).load(std::memory_order_acquire) != 0
+            || PendingFor(*link, GYRO_DIR_OUT).load(std::memory_order_acquire) != 0) {
             link = &(*link)->next;
 
             continue;
@@ -110,6 +117,24 @@ static void DrainMPSC(Gyro *loop) {
             continue;
         }
 
+        if (ordered->kind == RequestKind::CLOSE) {
+            auto *h = ordered->io.peer;
+
+            for (auto *cursor = h->in.GetHead(); cursor != nullptr; cursor = cursor->queue.next)
+                CancelRequest(cursor);
+
+            for (auto *cursor = h->out.GetHead(); cursor != nullptr; cursor = cursor->queue.next)
+                CancelRequest(cursor);
+
+            loop->AddToClosingQueue(h);
+
+            loop->requests.Release(ordered);
+
+            ordered = next;
+
+            continue;
+        }
+
         const auto cb = ordered->cb_user;
         auto *handle = ordered->handle;
         auto *data = ordered->data;
@@ -117,6 +142,15 @@ static void DrainMPSC(Gyro *loop) {
         const auto status = Submit(ordered, nullptr, ordered->timer.timeout);
         if (status != GYRO_COMPLETED && cb != nullptr)
             cb(handle, status, 0, data);
+
+        // Closed while it was on its way here. The close's own walk is behind
+        // every submit pushed before it and finds those; this one was pushed
+        // after, having read the handle as open a moment too early. It gets
+        // what the walk gave the others, and nothing is left on a closing
+        // handle with nobody to end it. Only when Submit succeeded: on failure
+        // the request has already been finished and released.
+        if (status == GYRO_COMPLETED && handle != nullptr && !IsActive(handle))
+            CancelRequest(ordered);
 
         ordered = next;
     }

@@ -46,6 +46,33 @@ typedef void (*gyro_close_cb)(gyro_handle_t *handle);
 GYRO_API gyro_t *gyro_handle_loop(const gyro_handle_t *handle);
 
 /**
+ * @brief Closes the handle.
+ *
+ * Returns immediately. The handle stops accepting operations in this call;
+ * the ones already in flight are cancelled on the loop's next turn and each
+ * reports GYRO_ECANCELED, and @p cb is invoked once they all have. Calling
+ * this again on a closing handle does nothing, from any thread, and the
+ * callback still fires exactly once: the one registered by the call that got
+ * there first.
+ *
+ * An operation submitted from another thread before this call, and not yet
+ * picked up by the loop, is cancelled like the rest: the close travels the
+ * same queue and reaches the loop behind it.
+ *
+ * @param cb Invoked when the handle is gone. May be NULL.
+ * @return GYRO_COMPLETED, or GYRO_ENOMEM when the request store could not
+ *       provide the note that carries the close to the loop.
+ *
+ * @warning Closing a handle another thread is submitting on at the same
+ * moment is undefined. Whoever closes has to know that nobody else is still
+ * using it.
+ *
+ * @note Thread-safe. From the loop's own thread it takes effect on the next
+ *       turn, exactly as it does from anywhere else.
+ */
+GYRO_API int gyro_handle_close(gyro_handle_t *handle, gyro_close_cb cb);
+
+/**
  * @brief Claims a direction, and says whether the operation may go inline.
  *
  * Always takes the claim, whichever way the answer goes: a caller told no is
@@ -89,25 +116,6 @@ GYRO_API int gyro_handle_try_begin(gyro_handle_t *handle, gyro_dir_t direction);
  *       read and says nothing about the moment after.
  */
 GYRO_API unsigned int gyro_handle_pending(const gyro_handle_t *handle, gyro_dir_t direction);
-
-/**
- * @brief Closes the handle.
- *
- * Returns immediately: pending operations are cancelled first, and @p cb is
- * invoked on a later iteration once they have all reported. Calling this again
- * on a closing handle does nothing, and the callback still fires exactly once.
- *
- * @param cb Invoked when the handle is gone. May be NULL.
- *
- * @warning Closing a handle another thread may still be submitting on is
- * undefined. gyro cannot guard it: the handle is freed once the last operation
- * reports, so a submit that arrives after that reads memory that is gone.
- * Whoever closes has to know that nobody else is still using it.
- *
- * @note Loop-affine: it walks both queues and hands the handle to the loop for
- *       burial.
- */
-GYRO_API void gyro_handle_close(gyro_handle_t *handle, gyro_close_cb cb);
 
 /**
  * @brief Returns the user data attached to the handle.

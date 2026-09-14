@@ -11,7 +11,8 @@
 namespace gyro {
     enum class RequestKind : uint16_t {
         OP = 0, // Default, normal operation
-        CANCEL
+        CANCEL,
+        CLOSE
     };
 
     struct RequestIndex {

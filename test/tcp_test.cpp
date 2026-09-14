@@ -17,6 +17,8 @@
 #include <gyro/gyro.h>
 
 namespace {
+    using namespace std::chrono_literals;
+
     /// What a callback saw, so a test can assert on it after the loop returns.
     struct Report {
         int status = GYRO_PENDING;
@@ -853,6 +855,229 @@ namespace {
         // forward to now, so the only thing that keeps them apart is which of
         // the two decided first.
         EXPECT_EQ(report.status, GYRO_ECANCELED);
+    }
+
+    // -----------------------------------------------------------------------
+    // Cancellation from anywhere
+    //
+    // A cancellation is never carried out where it is asked for: the token is
+    // handed to the loop, which resolves it in its own thread, on its next turn.
+    // That is what makes it safe from any thread, and what fixes its place in
+    // line behind the submit it names.
+    // -----------------------------------------------------------------------
+
+    TEST_F(TcpTest, ACancelFromAnotherThreadWakesTheLoopAndReports) {
+        char storage[64];
+        gyro_buf_t buf{storage, sizeof(storage)};
+        Report report;
+        gyro_request_t token;
+
+        // No deadline, no peer: only a cancellation can end this, and the loop
+        // will be asleep with nothing to wake it but that.
+        ASSERT_EQ(gyro_tcp_read(this->conn, &buf, 1, 0, Done, &report, &token, nullptr), GYRO_PENDING);
+
+        std::thread other([&] {
+            std::this_thread::sleep_for(50ms);
+
+            EXPECT_EQ(gyro_request_cancel(this->loop, token), GYRO_COMPLETED);
+        });
+
+        // Coming back at all is the assertion: the carrier has to reach a loop
+        // that is blocked with no deadline of its own.
+        RunFor(1);
+
+        other.join();
+
+        EXPECT_EQ(report.calls, 1);
+        EXPECT_EQ(report.status, GYRO_ECANCELED);
+    }
+
+    TEST_F(TcpTest, ACancelReachesTheLoopBehindTheSubmitItNames) {
+        char storage[64];
+        gyro_buf_t buf{storage, sizeof(storage)};
+        Report report;
+        gyro_request_t token;
+
+        // Submitted from elsewhere and never drained: the operation is on the
+        // wakeup queue and in no heap and no handle queue.
+        std::thread other([&] {
+            EXPECT_EQ(gyro_tcp_read(this->conn, &buf, 1, 0, Done, &report, &token, nullptr), GYRO_PENDING);
+        });
+        other.join();
+        ASSERT_TRUE(GYRO_REQUEST_IS_VALID(token));
+
+        // Cancelled from the loop's thread before the loop has seen the submit.
+        // Acted on in place, this would put the request into the heap now and
+        // again when its submit is drained, and the heap would be corrupted.
+        // Posted, it queues behind the submit and finds it in place.
+        ASSERT_EQ(gyro_request_cancel(this->loop, token), GYRO_COMPLETED);
+
+        RunFor(1);
+
+        EXPECT_EQ(report.calls, 1);
+        EXPECT_EQ(report.status, GYRO_ECANCELED);
+    }
+
+    TEST_F(TcpTest, ACancelFromInsideTheOperationsOwnCallbackDoesNothing) {
+        struct Self {
+            gyro_t *loop = nullptr;
+            gyro_request_t token = gyro_request_invalid();
+            int status = GYRO_PENDING;
+            int calls = 0;
+        } self;
+
+        self.loop = this->loop;
+
+        // Cancels itself from within its own report. The token is still valid
+        // at that moment, since the slot goes back to the store only after the
+        // callback returns, so the carrier has to find it stale by the time it
+        // is drained, and do nothing.
+        const auto cb = [](gyro_handle_t *, const int status, size_t, void *data) {
+            auto *s = (Self *) data;
+
+            s->status = status;
+            s->calls++;
+
+            EXPECT_EQ(gyro_request_cancel(s->loop, s->token), GYRO_COMPLETED);
+
+            return GYRO_CB_SUCCESS;
+        };
+
+        char storage[64];
+        gyro_buf_t buf{storage, sizeof(storage)};
+
+        ASSERT_EQ(gyro_tcp_read(this->conn, &buf, 1, 30, cb, &self, &self.token, nullptr), GYRO_PENDING);
+
+        // Ends on its own through the deadline; the loop then drains the
+        // carrier the callback posted, finds nothing, and runs dry.
+        EXPECT_EQ(gyro_run(this->loop), GYRO_COMPLETED);
+
+        EXPECT_EQ(self.calls, 1);
+        EXPECT_EQ(self.status, GYRO_ETIMEDOUT);
+
+        // The same token again, from another thread this time: stale, and
+        // still a success that does nothing, which is the whole contract.
+        std::thread other([&] {
+            EXPECT_EQ(gyro_request_cancel(this->loop, self.token), GYRO_COMPLETED);
+        });
+        other.join();
+
+        EXPECT_EQ(gyro_run(this->loop), GYRO_COMPLETED);
+        EXPECT_EQ(self.calls, 1);
+    }
+
+    TEST_F(TcpTest, ACancelOnAnInvalidTokenPostsNothing) {
+        // Nothing is handed to the loop for a token that names nothing, so a
+        // loop with no work stays a loop with no work. Were a carrier posted,
+        // the loop would have something to drain and this run would not be the
+        // immediate return an idle loop makes.
+        EXPECT_EQ(gyro_request_cancel(this->loop, gyro_request_invalid()), GYRO_COMPLETED);
+
+        const auto started = std::chrono::steady_clock::now();
+        EXPECT_EQ(gyro_run(this->loop), GYRO_COMPLETED);
+        const auto elapsed = std::chrono::steady_clock::now() - started;
+
+        EXPECT_LT(elapsed, 10ms);
+    }
+
+    // -----------------------------------------------------------------------
+    // Closing from anywhere
+    //
+    // Like a cancellation, a close is posted rather than performed: the state
+    // flips in the call, so nothing new gets in, and the walk over the queues
+    // happens on the loop's thread. Being on the same queue as every submit
+    // puts it behind the ones already on their way, which is what lets it see
+    // them.
+    // -----------------------------------------------------------------------
+
+    TEST_F(TcpTest, ClosingAfterASubmitFromAnotherThreadCancelsIt) {
+        char storage[64];
+        gyro_buf_t buf{storage, sizeof(storage)};
+        Report report;
+
+        // Submitted from elsewhere, returned, and never drained: the read is
+        // on the wakeup queue and in neither of the handle's own queues.
+        std::thread other([&] {
+            EXPECT_EQ(gyro_tcp_read(this->conn, &buf, 1, 0, Done, &report, nullptr, nullptr), GYRO_PENDING);
+        });
+        other.join();
+
+        // Sequential, not concurrent: the submit had returned before this was
+        // called, so whoever closes is entitled to see it cancelled. A close
+        // acting on the spot would walk two empty queues and miss it, and the
+        // read would then land on a closing handle with nobody left to end it.
+        ASSERT_EQ(gyro_handle_close(GYRO_HANDLE(this->conn), OnClose), GYRO_COMPLETED);
+        this->conn = nullptr;
+
+        RunFor(2);
+
+        EXPECT_EQ(report.calls, 1);
+        EXPECT_EQ(report.status, GYRO_ECANCELED);
+        EXPECT_EQ(this->closed, 1);
+    }
+
+    TEST_F(TcpTest, ClosingFromAnotherThreadWakesTheLoopAndBuriesTheHandle) {
+        char storage[64];
+        gyro_buf_t buf{storage, sizeof(storage)};
+        Report report;
+
+        // The loop will be asleep on this with no deadline: only the close can
+        // bring it back.
+        ASSERT_EQ(gyro_tcp_read(this->conn, &buf, 1, 0, Done, &report, nullptr, nullptr), GYRO_PENDING);
+
+        std::thread other([&] {
+            std::this_thread::sleep_for(50ms);
+
+            EXPECT_EQ(gyro_handle_close(GYRO_HANDLE(this->conn), OnClose), GYRO_COMPLETED);
+        });
+
+        RunFor(2);
+
+        other.join();
+        this->conn = nullptr;
+
+        EXPECT_EQ(report.status, GYRO_ECANCELED);
+        EXPECT_EQ(this->closed, 1);
+    }
+
+    TEST_F(TcpTest, TwoThreadsClosingTheSameHandleReportItOnce) {
+        constexpr int kHandles = 64;
+
+        static std::atomic<int> buried;
+        buried.store(0);
+
+        // Socketless handles: closing is about the handle, not the descriptor.
+        std::vector<gyro_tcp_t *> handles(kHandles);
+        for (auto &h: handles) {
+            h = gyro_tcp_new(this->loop);
+            ASSERT_NE(h, nullptr);
+        }
+
+        const auto on_close = [](gyro_handle_t *) { buried.fetch_add(1); };
+
+        // Both threads close every handle, released together so that they
+        // meet on as many as the scheduler allows. Exactly one of them wins
+        // each; the other must find it already closing and do nothing.
+        std::atomic<int> go{0};
+        const auto closer = [&] {
+            go.fetch_add(1);
+            while (go.load() < 2) {
+            }
+
+            for (auto *h: handles)
+                EXPECT_EQ(gyro_handle_close(GYRO_HANDLE(h), on_close), GYRO_COMPLETED);
+        };
+
+        std::thread a(closer), b(closer);
+        a.join();
+        b.join();
+
+        // Nothing here stops the loop, so it runs dry on its own once every
+        // handle has been buried. A handle entered twice into the closing list
+        // would be freed twice and never get this far.
+        EXPECT_EQ(gyro_run(this->loop), GYRO_COMPLETED);
+
+        EXPECT_EQ(buried.load(), kHandles);
     }
 
     TEST_F(TcpTest, ClosingReportsEveryPendingOperationFirst) {
