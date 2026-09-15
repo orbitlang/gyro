@@ -48,6 +48,20 @@ static GyroRequest *RunTimer(Gyro *loop, const long long loop_time) {
             remove = IOCancel(request);
         }
 
+        if (request->handle == nullptr && request->abandoned == GYRO_COMPLETED) {
+            // Pure timer callback
+            const auto status = request->cb_user(nullptr, request->abandoned, 0, request->data);
+            if (status == GYRO_CB_CONTINUE) {
+                request->timer.timeout = loop->time + request->io.every;
+                request->timer.id = loop->time_id++;
+
+                loop->r_mheap.Insert(request);
+            } else
+                FinishRequest(loop, request);
+
+            continue;
+        }
+
         if (remove)
             gyro_op_complete(request, request->abandoned, request->io.transferred);
     }

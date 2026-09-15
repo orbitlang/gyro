@@ -71,6 +71,8 @@ struct GyroRequest {
 
             /// Target request to operate
             gyro::RequestIndex target;
+
+            long long every;
         };
 
         unsigned int nbufs;
