@@ -397,6 +397,47 @@ namespace {
         EXPECT_EQ(gyro_handle_pending(GYRO_HANDLE(this->conn), GYRO_DIR_IN), 0u);
     }
 
+    TEST_F(TcpTest, AnOperationChainedFromACallbackCanGoInline) {
+        struct Chain {
+            gyro_tcp_t *conn;
+            char first = 0, second = 0;
+            int second_rc = GYRO_EUNKNOWN;
+            size_t second_got = 0;
+        } chain{this->conn};
+
+        gyro_buf_t one{&chain.first, 1};
+
+        // Queued: nothing to read yet, so this one reports through its callback.
+        const auto cb = [](gyro_handle_t *, int, size_t, void *data) {
+            auto *c = (Chain *) data;
+            gyro_buf_t two{&c->second, 1};
+
+            // The commonest thing a callback does is start the next operation.
+            // The one reporting here is finished in every sense by now, so the
+            // direction is free and the byte already waiting is taken on the
+            // spot. Were the claim still held until the callback returned, this
+            // would be queued for no reason and the fast path lost exactly
+            // where it is used most.
+            c->second_rc = gyro_tcp_read(c->conn, &two, 1, 0, nullptr, nullptr, nullptr, &c->second_got);
+
+            // Done() records nothing for a null report and stops the loop.
+            return Done(nullptr, 0, 0, nullptr);
+        };
+
+        ASSERT_EQ(gyro_tcp_read(this->conn, &one, 1, 0, cb, &chain, nullptr, nullptr), GYRO_PENDING);
+
+        char message[] = "AB";
+        gyro_buf_t out{message, 2};
+        ASSERT_EQ(gyro_tcp_write(this->client, &out, 1, 0, nullptr, nullptr, nullptr, nullptr), GYRO_COMPLETED);
+
+        RunFor(1);
+
+        EXPECT_EQ(chain.first, 'A');
+        EXPECT_EQ(chain.second_rc, GYRO_COMPLETED) << "the chained read was queued behind the operation reporting to it";
+        EXPECT_EQ(chain.second_got, 1u);
+        EXPECT_EQ(chain.second, 'B');
+    }
+
     TEST_F(TcpTest, AnOperationThatFailsAtOnceStillGivesTheClaimBack) {
         gyro_handle_close(GYRO_HANDLE(this->client), OnClose);
         RunFor(1);
@@ -928,10 +969,9 @@ namespace {
 
         self.loop = this->loop;
 
-        // Cancels itself from within its own report. The token is still valid
-        // at that moment, since the slot goes back to the store only after the
-        // callback returns, so the carrier has to find it stale by the time it
-        // is drained, and do nothing.
+        // Cancels itself from within its own report. By then the slot has
+        // already gone back to the store and the token is stale, so what the
+        // carrier finds when it is drained is nothing, and it does nothing.
         const auto cb = [](gyro_handle_t *, const int status, size_t, void *data) {
             auto *s = (Self *) data;
 
