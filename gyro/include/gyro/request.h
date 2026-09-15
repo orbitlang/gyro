@@ -46,8 +46,13 @@ typedef gyro_cb_status_t (*gyro_rq_op_cb)(gyro_handle_t *handle, gyro_op_t *op);
  * @brief Reports the outcome to whoever asked for the operation.
  *
  * Runs exactly once per operation that reaches the loop, and never for one that
- * a submit already answered with GYRO_COMPLETED or an error. The operation is
- * already unlinked by then, so the handle it is given can be closed from here.
+ * a submit already answered with GYRO_COMPLETED or an error. By the time it
+ * runs the operation is over in every sense: unlinked from its handle,
+ * released to the store, its token stale and the direction it held free. So
+ * the handle it is given can be closed from here, a cancellation of its own
+ * token from here is a harmless no-op, and an operation started from here on
+ * the same handle finds nothing in its way and may complete on the spot,
+ * which is the common way to chain one operation onto the last.
  *
  * @param status GYRO_COMPLETED, or a negative code such as GYRO_EOF.
  * @param transferred Bytes moved by the operation as a whole, including any
@@ -139,11 +144,13 @@ GYRO_API int gyro_request_submit(gyro_handle_t *handle, void *data, const gyro_r
  * @brief Reports the outcome of an operation and hands it back to the loop.
  *
  * Called by the operation callback once it knows what happened. The operation
- * is unlinked from its handle before the user callback runs, so user code can
- * never reach a request that is completing, and is released afterwards: the
- * pointer must not be used again.
+ * is unlinked from its handle and released to the store before the user
+ * callback runs, so user code can never reach a request that is completing,
+ * and whatever it submits from inside the callback finds the direction free.
+ * The slot may be handed out again while the callback is still running, which
+ * is why nothing about @p op may be read once this has been called.
  *
- * @param op The operation being reported. Invalid once this returns.
+ * @param op The operation being reported. Invalid from the call onwards.
  * @param status GYRO_COMPLETED, or a negative code such as GYRO_EOF.
  * @param transferred Bytes moved by the operation as a whole.
  *

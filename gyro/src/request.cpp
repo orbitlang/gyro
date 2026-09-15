@@ -112,9 +112,13 @@ void gyro_op_complete(gyro_op_t *op, const int status, const size_t transferred)
         queue->Remove(op);
     }
 
-    if (op->cb_user != nullptr)
-        op->cb_user(op->handle, status, transferred, op->data);
+    auto *handle = op->handle;
+    auto *cb_user = op->cb_user;
+    auto *data = op->data;
 
     FinishRequest(op->loop, op);
+
+    if (cb_user != nullptr)
+        cb_user(handle, status, transferred, data);
 }
 } // extern "C"
