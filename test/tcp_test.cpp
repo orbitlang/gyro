@@ -1020,6 +1020,74 @@ namespace {
         EXPECT_LT(elapsed, 10ms);
     }
 
+    TEST_F(TcpTest, AWholeConnectionCanBeSetUpFromAnotherThread) {
+        // Nothing in the setup path belongs to the loop: the descriptor is the
+        // handle's own, and the loop does not look at it until something is
+        // submitted. So a worker can build a server and a client end to end
+        // without ever touching the loop's thread.
+        gyro_tcp_t *server = nullptr;
+        gyro_tcp_t *client = nullptr;
+        gyro_tcp_t *peer = nullptr;
+        sockaddr_in addr{};
+        Report accepted, connected;
+
+        std::thread other([&] {
+            server = gyro_tcp_new(this->loop);
+            client = gyro_tcp_new(this->loop);
+            peer = gyro_tcp_new(this->loop);
+            ASSERT_NE(server, nullptr);
+            ASSERT_NE(client, nullptr);
+            ASSERT_NE(peer, nullptr);
+
+            addr.sin_family = AF_INET;
+            addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+            ASSERT_EQ(gyro_tcp_bind(server, (sockaddr *) &addr, sizeof(addr), GYRO_TCP_REUSEADDR), GYRO_COMPLETED);
+            ASSERT_EQ(gyro_tcp_listen(server, 16), GYRO_COMPLETED);
+
+            // Opened on this thread, so readable from it too.
+            socklen_t len = sizeof(addr);
+            ASSERT_NE(gyro_tcp_fileno(server), GYRO_INVALID_SOCKET);
+            ASSERT_EQ(getsockname((int) gyro_tcp_fileno(server), (sockaddr *) &addr, &len), 0);
+
+            ASSERT_EQ(gyro_tcp_accept(server, peer, 0, Done, &accepted, nullptr), GYRO_PENDING);
+
+            const int rc = gyro_tcp_connect(client, (sockaddr *) &addr, sizeof(addr), 0,
+                                            Done, &connected, nullptr);
+            ASSERT_TRUE(rc == GYRO_PENDING || rc == GYRO_COMPLETED);
+        });
+        other.join();
+
+        // Whoever set them up, the callbacks belong to the loop.
+        RunFor(connected.calls == 0 ? 2 : 1);
+
+        EXPECT_EQ(accepted.status, GYRO_COMPLETED);
+        EXPECT_NE(gyro_tcp_fileno(peer), GYRO_INVALID_SOCKET);
+
+        // And the connection works, which is what says the descriptors were
+        // set up properly rather than merely without an assertion firing.
+        char message[] = "hi";
+        gyro_buf_t out{message, 2};
+        ASSERT_EQ(gyro_tcp_write(client, &out, 1, 0, nullptr, nullptr, nullptr, nullptr), GYRO_COMPLETED);
+
+        WaitReadable(peer);
+
+        char storage[8] = {};
+        gyro_buf_t in{storage, sizeof(storage)};
+        size_t got = 0;
+        EXPECT_EQ(gyro_tcp_read(peer, &in, 1, 0, nullptr, nullptr, nullptr, &got), GYRO_COMPLETED);
+        EXPECT_EQ(got, 2u);
+        EXPECT_EQ(memcmp(storage, "hi", 2), 0);
+
+        this->closed = 0;
+        this->outstanding = 3;
+        gyro_handle_close(GYRO_HANDLE(server), OnClose);
+        gyro_handle_close(GYRO_HANDLE(client), OnClose);
+        gyro_handle_close(GYRO_HANDLE(peer), OnClose);
+        EXPECT_EQ(gyro_run(this->loop), GYRO_STOPPED);
+        EXPECT_EQ(this->closed, 3);
+    }
+
     // -----------------------------------------------------------------------
     // Closing from anywhere
     //

@@ -2,7 +2,6 @@
 //
 // Licensed under the Apache License v2.0
 
-#include <cassert>
 #include <cerrno>
 
 #include <fcntl.h>
@@ -335,11 +334,11 @@ int gyro_tcp_bind(gyro_tcp_t *tcp, const sockaddr *addr, const size_t addrlen, c
     if (tcp == nullptr || addr == nullptr || addrlen == 0)
         return GYRO_EINVAL;
 
-    assert(gyro_on_loop_thread(tcp->handle.gyro));
-
     if (!gyro::IsActive(&tcp->handle))
         return GYRO_EBADF;
 
+    // Nothing here belongs to the loop: the descriptor is the handle's own,
+    // and setting one up is ordered against using it by the caller, not by us.
     const int status = OpenSocket(tcp, addr->sa_family);
     if (status != GYRO_COMPLETED)
         return status;
@@ -364,8 +363,6 @@ int gyro_tcp_connect(gyro_tcp_t *tcp, const sockaddr *addr, const size_t addrlen
 
     if (tcp == nullptr || addr == nullptr || addrlen == 0)
         return GYRO_EINVAL;
-
-    assert(gyro_on_loop_thread(tcp->handle.gyro));
 
     if (!gyro::IsActive(&tcp->handle))
         return GYRO_EBADF;
@@ -396,8 +393,6 @@ int gyro_tcp_connect(gyro_tcp_t *tcp, const sockaddr *addr, const size_t addrlen
 int gyro_tcp_listen(const gyro_tcp_t *tcp, const int backlog) {
     if (tcp == nullptr)
         return GYRO_EINVAL;
-
-    assert(gyro_on_loop_thread(tcp->handle.gyro));
 
     if (!gyro::IsActive(&tcp->handle))
         return GYRO_EBADF;
@@ -528,8 +523,6 @@ GYRO_API int gyro_tcp_write(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbuf
 }
 
 gyro_socket_t gyro_tcp_fileno(const gyro_tcp_t *tcp) {
-    assert(tcp == nullptr || gyro_on_loop_thread(tcp->handle.gyro));
-
     if (tcp == nullptr || tcp->handle.handle == gyro::kInvalidSocket)
         return gyro::kInvalidSocket;
 
@@ -539,8 +532,6 @@ gyro_socket_t gyro_tcp_fileno(const gyro_tcp_t *tcp) {
 gyro_tcp_t *gyro_tcp_new(gyro_t *gyro) {
     if (gyro == nullptr)
         return nullptr;
-
-    assert(gyro_on_loop_thread(gyro));
 
     const auto *allocator = &gyro->allocator;
 

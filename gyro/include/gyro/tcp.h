@@ -73,7 +73,9 @@ GYRO_API int gyro_tcp_accept(gyro_tcp_t *tcp, gyro_tcp_t *client, long long time
  * @param flags Zero, or GYRO_TCP_REUSEADDR.
  * @return GYRO_COMPLETED, or a negative status.
  *
- * @note Loop-affine: it opens the descriptor and writes it into the handle.
+ * @note Thread-safe, and synchronous wherever it is called: the answer is the
+ *       kernel's and comes back at once. Binding a handle somebody else is
+ *       already using is the caller's race, not gyro's.
  */
 GYRO_API int gyro_tcp_bind(gyro_tcp_t *tcp, const struct sockaddr *addr, size_t addrlen, unsigned int flags);
 
@@ -97,8 +99,7 @@ GYRO_API int gyro_tcp_bind(gyro_tcp_t *tcp, const struct sockaddr *addr, size_t 
  *       once (which happens over loopback), or a negative status such as
  *       GYRO_ECONNREFUSED.
  *
- * @note Loop-affine: unlike the other operations it opens the descriptor,
- *       which is the loop's to own.
+ * @note Thread-safe.
  */
 GYRO_API int gyro_tcp_connect(gyro_tcp_t *tcp, const struct sockaddr *addr, size_t addrlen, long long timeout,
                               gyro_rq_user_cb cb, void *data, gyro_request_t *out_token);
@@ -112,7 +113,7 @@ GYRO_API int gyro_tcp_connect(gyro_tcp_t *tcp, const struct sockaddr *addr, size
  * @param backlog How many connections the kernel may hold before refusing more.
  * @return GYRO_COMPLETED, or a negative status.
  *
- * @note Loop-affine.
+ * @note Thread-safe, and synchronous: the kernel answers at once.
  */
 GYRO_API int gyro_tcp_listen(const gyro_tcp_t *tcp, int backlog);
 
@@ -206,7 +207,7 @@ GYRO_API int gyro_tcp_write(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbuf
  * @return The socket, or GYRO_INVALID_SOCKET while the handle has none, which
  *       is the case until gyro_tcp_bind() or gyro_tcp_connect() opens one.
  *
- * @note Loop-affine: the descriptor is opened and closed by the loop.
+ * @note Thread-safe.
  */
 GYRO_API gyro_socket_t gyro_tcp_fileno(const gyro_tcp_t *tcp);
 
@@ -219,7 +220,7 @@ GYRO_API gyro_socket_t gyro_tcp_fileno(const gyro_tcp_t *tcp);
  *
  * @return The handle, or NULL if the allocator refused.
  *
- * @note Loop-affine.
+ * @note Thread-safe.
  */
 GYRO_API gyro_tcp_t *gyro_tcp_new(gyro_t *gyro);
 #ifdef __cplusplus
