@@ -406,6 +406,19 @@ int gyro_tcp_listen(const gyro_tcp_t *tcp, const int backlog) {
     return GYRO_COMPLETED;
 }
 
+int gyro_tcp_open(gyro_tcp_t *tcp, const int family) {
+    if (tcp == nullptr)
+        return GYRO_EINVAL;
+
+    if (family != AF_INET && family != AF_INET6)
+        return GYRO_EINVAL;
+
+    if (!gyro::IsActive(&tcp->handle))
+        return GYRO_EBADF;
+
+    return OpenSocket(tcp, family);
+}
+
 GYRO_API int gyro_tcp_read(gyro_tcp_t *tcp, gyro_buf_t *bufs, const unsigned int nbufs, const long long timeout,
                            const gyro_rq_user_cb cb, void *data, gyro_request_t *token, size_t *transferred) {
     if (token != nullptr)
@@ -457,8 +470,8 @@ GYRO_API int gyro_tcp_read(gyro_tcp_t *tcp, gyro_buf_t *bufs, const unsigned int
     return GYRO_PENDING;
 }
 
-GYRO_API int gyro_tcp_write(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbufs, long long timeout,
-                            gyro_rq_user_cb cb, void *data, gyro_request_t *token, size_t *transferred) {
+int gyro_tcp_write(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbufs, const long long timeout,
+                   const gyro_rq_user_cb cb, void *data, gyro_request_t *token, size_t *transferred) {
     if (token != nullptr)
         *token = gyro_request_invalid();
 

@@ -9,7 +9,9 @@
 #include <vector>
 
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netinet/in.h>
+#include <sys/socket.h>
 #include <poll.h>
 
 #include <gtest/gtest.h>
@@ -1018,6 +1020,54 @@ namespace {
         const auto elapsed = std::chrono::steady_clock::now() - started;
 
         EXPECT_LT(elapsed, 10ms);
+    }
+
+    TEST_F(TcpTest, OpeningTheDescriptorEarlyLeavesRoomToConfigureIt) {
+        auto *early = gyro_tcp_new(this->loop);
+        ASSERT_NE(early, nullptr);
+
+        // Bind and connect open their own, taking the family from the address,
+        // which leaves nowhere to set the options a kernel only honours before
+        // a socket is bound. This is that gap.
+        EXPECT_EQ(gyro_tcp_fileno(early), GYRO_INVALID_SOCKET);
+
+        ASSERT_EQ(gyro_tcp_open(early, AF_INET), GYRO_COMPLETED);
+        ASSERT_NE(gyro_tcp_fileno(early), GYRO_INVALID_SOCKET);
+
+        // Stands in for the real cases (binding to an interface, IPV6_V6ONLY):
+        // an option that has to be set before the bind and can be read back.
+        constexpr int wanted = 32 * 1024;
+        ASSERT_EQ(setsockopt((int) gyro_tcp_fileno(early), SOL_SOCKET, SO_RCVBUF, &wanted, sizeof(wanted)), 0);
+
+        // Idempotent, and it does not disturb what is already there.
+        const gyro_socket_t first = gyro_tcp_fileno(early);
+        EXPECT_EQ(gyro_tcp_open(early, AF_INET), GYRO_COMPLETED);
+        EXPECT_EQ(gyro_tcp_fileno(early), first);
+
+        // gyro's own settings survive, and the loop depends on this one.
+        const int flags = fcntl((int) gyro_tcp_fileno(early), F_GETFL, 0);
+        EXPECT_NE(flags & O_NONBLOCK, 0);
+
+        // Binding afterwards adopts the descriptor rather than making another.
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        ASSERT_EQ(gyro_tcp_bind(early, (sockaddr *) &addr, sizeof(addr), GYRO_TCP_REUSEADDR), GYRO_COMPLETED);
+        EXPECT_EQ(gyro_tcp_fileno(early), first) << "bind replaced the descriptor that had just been configured";
+
+        int got = 0;
+        socklen_t len = sizeof(got);
+        ASSERT_EQ(getsockopt((int) gyro_tcp_fileno(early), SOL_SOCKET, SO_RCVBUF, &got, &len), 0);
+        EXPECT_GT(got, 0) << "the option set before the bind did not survive it";
+
+        EXPECT_EQ(gyro_tcp_open(early, AF_UNIX), GYRO_EINVAL);
+        EXPECT_EQ(gyro_tcp_open(nullptr, AF_INET), GYRO_EINVAL);
+
+        this->closed = 0;
+        this->outstanding = 1;
+        gyro_handle_close(GYRO_HANDLE(early), OnClose);
+        EXPECT_EQ(gyro_run(this->loop), GYRO_STOPPED);
+        EXPECT_EQ(this->closed, 1);
     }
 
     TEST_F(TcpTest, AWholeConnectionCanBeSetUpFromAnotherThread) {

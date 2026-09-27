@@ -118,6 +118,33 @@ GYRO_API int gyro_tcp_connect(gyro_tcp_t *tcp, const struct sockaddr *addr, size
 GYRO_API int gyro_tcp_listen(const gyro_tcp_t *tcp, int backlog);
 
 /**
+ * @brief Opens the descriptor without doing anything with it yet.
+ *
+ * gyro_tcp_bind() and gyro_tcp_connect() open one themselves, taking the
+ * family from the address they are given, which leaves no moment in between
+ * to configure it. This is that moment, for the options a kernel only honours
+ * on a socket that is not yet bound or connected: binding to an interface,
+ * IPV6_V6ONLY, buffer sizes, anything gyro has no call of its own for. Set
+ * them through gyro_tcp_fileno(), then bind or connect as usual.
+ *
+ * Idempotent. A handle that already has a descriptor, from an earlier call or
+ * from having been accepted, is left exactly as it is.
+ *
+ * @param family Address family, AF_INET or AF_INET6. Binding or connecting an
+ *             address of another family afterwards is refused by the OS
+ *             rather than by gyro.
+ * @return GYRO_COMPLETED, or a negative status.
+ *
+ * @warning gyro has already set what it needs on that descriptor: non-blocking
+ * mode, close-on-exec, and SO_NOSIGPIPE where it exists. Non-blocking is not
+ * negotiable; clearing it stalls the loop on the first operation that has to
+ * wait.
+ *
+ * @note Thread-safe.
+ */
+GYRO_API int gyro_tcp_open(gyro_tcp_t *tcp, int family);
+
+/**
  * @brief Reads whatever has arrived.
  *
  * Short by design: it reports as soon as one byte is there, up to the room the
@@ -205,7 +232,8 @@ GYRO_API int gyro_tcp_write(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbuf
  * ends up being polled. Use gyro_handle_close() instead.
  *
  * @return The socket, or GYRO_INVALID_SOCKET while the handle has none, which
- *       is the case until gyro_tcp_bind() or gyro_tcp_connect() opens one.
+ *       is the case until gyro_tcp_bind(), gyro_tcp_connect() or
+ *       gyro_tcp_open() opens one.
  *
  * @note Thread-safe.
  */
