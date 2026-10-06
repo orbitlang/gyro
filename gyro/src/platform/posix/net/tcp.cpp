@@ -303,6 +303,9 @@ int gyro_tcp_bind(gyro_tcp_t *tcp, const sockaddr *addr, const size_t addrlen, c
     if (tcp == nullptr || addr == nullptr || addrlen == 0)
         return GYRO_EINVAL;
 
+    if (addr->sa_family != AF_INET && addr->sa_family != AF_INET6)
+        return GYRO_EINVAL;
+
     if (!gyro::IsActive(&tcp->handle))
         return GYRO_EBADF;
 
@@ -331,6 +334,9 @@ int gyro_tcp_connect(gyro_tcp_t *tcp, const sockaddr *addr, const size_t addrlen
         *out_token = gyro_request_invalid();
 
     if (tcp == nullptr || addr == nullptr || addrlen == 0)
+        return GYRO_EINVAL;
+
+    if (addr->sa_family != AF_INET && addr->sa_family != AF_INET6)
         return GYRO_EINVAL;
 
     if (!gyro::IsActive(&tcp->handle))

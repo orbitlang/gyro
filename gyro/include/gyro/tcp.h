@@ -8,6 +8,7 @@
 #include <stddef.h>
 
 #include <gyro/os.h>
+#include <gyro/platform.h>
 
 #if GYRO_OS_WINDOWS
 #include <ws2def.h>
@@ -22,6 +23,50 @@
 
 /// Lets other sockets bind the same address, as SO_REUSEADDR does.
 #define GYRO_TCP_REUSEADDR 0x01
+
+/**
+ * @file tcp.h
+ *
+ * A byte stream, and the two halves of it are independent: a read and a write
+ * on one connection neither wait for nor block each other, and each has its
+ * own order. Two promises are worth stating before anything else, because they
+ * are what the calls below are shaped around:
+ *
+ * - **A read is short.** It reports as soon as one byte has arrived, up to the
+ *   room offered, and never waits for more. Reading a known number of bytes is
+ *   a layer on top, built by reading again.
+ *   GYRO_EOF says the peer shut down cleanly, and is the only way to learn
+ *   that no more bytes are coming.
+ * - **A write is complete.** A partial write is not an outcome: the loop
+ *   retries the remainder itself and reports only once the last byte has gone,
+ *   so GYRO_COMPLETED never means part of it and the caller never writes a
+ *   retry loop.
+ *
+ * **One rule covers everything handed to an operation**: the regions, the array
+ * naming them, and the handle an accept is told to land a connection in all
+ * have to stay valid, and unmodified, until the operation reports. An operation
+ * the loop takes over keeps the pointers and uses them later, so anything with
+ * a shorter life than the operation works only while the fast path keeps
+ * winning. gyro_tcp_bind() and gyro_tcp_connect() are the other way round:
+ * they finish inside the call, so the address they are given is read and done
+ * with before they return.
+ *
+ * **This is an IP socket**, AF_INET or AF_INET6, and every call that takes a
+ * family or an address refuses anything else.
+ *
+ * Socket options, keepalive, TCP_NODELAY and the rest have no calls of their
+ * own: open the socket with gyro_tcp_open(), set what you need through
+ * gyro_tcp_fileno(), then bind or connect.
+ *
+ * Every entry point here is callable from any thread. The ones that set a
+ * handle up, gyro_tcp_new(), gyro_tcp_open(), gyro_tcp_bind(),
+ * gyro_tcp_listen() and gyro_tcp_connect(), touch nothing the loop owns: they
+ * work on the handle's own descriptor, and the loop never looks at it until an
+ * operation is submitted. What is left to the caller is the ordering between
+ * setting a handle up and using it, which is the same rule that already governs
+ * two threads working one handle: gyro does not serialise them, and does not
+ * pretend to.
+ */
 
 #ifdef __cplusplus
 extern "C" {
@@ -70,8 +115,11 @@ GYRO_API int gyro_tcp_accept(gyro_tcp_t *tcp, gyro_tcp_t *client, long long time
  * Opens the descriptor if it does not exist yet: the address is what tells gyro
  * which family to open it for.
  *
+ * @param addr Local address to take. Its family must be AF_INET or AF_INET6,
+ *           and is what the descriptor is opened for when there is not one yet.
  * @param flags Zero, or GYRO_TCP_REUSEADDR.
- * @return GYRO_COMPLETED, or a negative status.
+ * @return GYRO_COMPLETED, or a negative status: GYRO_EINVAL for an address of
+ *       any other family.
  *
  * @note Thread-safe, and synchronous wherever it is called: the answer is the
  *       kernel's and comes back at once. Binding a handle somebody else is
@@ -86,7 +134,8 @@ GYRO_API int gyro_tcp_bind(gyro_tcp_t *tcp, const struct sockaddr *addr, size_t 
  * handle straight from gyro_tcp_new() has no socket, and the address is what
  * says which family to open it for.
  *
- * @param addr Peer to reach. Only read for the duration of the call.
+ * @param addr Peer to reach. Only read for the duration of the call. Its
+ *           family must be AF_INET or AF_INET6.
  * @param timeout Milliseconds to wait, or 0 to wait as long as the OS does.
  *              A connection is not established any faster by giving up on it
  *              sooner, so this is about how long the caller is prepared to
@@ -97,7 +146,7 @@ GYRO_API int gyro_tcp_bind(gyro_tcp_t *tcp, const struct sockaddr *addr, size_t 
  *                invalid token unless GYRO_PENDING is returned.
  * @return GYRO_PENDING, GYRO_COMPLETED when the connection was established at
  *       once (which happens over loopback), or a negative status such as
- *       GYRO_ECONNREFUSED.
+ *       GYRO_ECONNREFUSED, or GYRO_EINVAL for an address of another family.
  *
  * @note Thread-safe.
  */
