@@ -7,7 +7,9 @@
 
 #include <stdint.h>
 
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#include <gyro/platform.h>
+
+#if GYRO_OS_WINDOWS
 /// SOCKET: pointer-sized, so 64 bit on Win64, and unsigned.
 typedef uintptr_t gyro_socket_t;
 

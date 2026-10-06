@@ -2,12 +2,16 @@
 //
 // Licensed under the Apache License v2.0
 
+#include <gyro/platform.h>
+
+#if GYRO_OS_POSIX
+
 #include <cerrno>
 
 #include <sys/socket.h>
 #include <sys/uio.h>
 
-#ifdef __linux__
+#if GYRO_OS_LINUX
 #include <climits> // IOV_MAX
 #endif
 
@@ -523,3 +527,5 @@ gyro_tcp_t *gyro_tcp_new(gyro_t *gyro) {
     return tcp;
 }
 } // extern "C"
+
+#endif // GYRO_OS_POSIX

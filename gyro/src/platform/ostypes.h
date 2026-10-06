@@ -7,12 +7,12 @@
 
 #include <gyro/os.h>
 
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#if GYRO_OS_WINDOWS
 #include <winsock2.h>
 #endif
 
 namespace gyro {
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#if GYRO_OS_WINDOWS
     using OSPoll = void *; ///< HANDLE of the completion port.
     using OSSocket = gyro_socket_t;
 

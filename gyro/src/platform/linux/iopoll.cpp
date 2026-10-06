@@ -2,7 +2,9 @@
 //
 // Licensed under the Apache License v2.0
 
-#if defined(__linux__)
+#include <gyro/platform.h>
+
+#if GYRO_OS_LINUX
 #include <cassert>
 #include <cerrno>
 #include <climits>

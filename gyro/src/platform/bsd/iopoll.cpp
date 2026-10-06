@@ -2,7 +2,9 @@
 //
 // Licensed under the Apache License v2.0
 
-#if defined(__APPLE__) || defined(BSD)
+#include <gyro/platform.h>
+
+#if GYRO_OS_DARWIN || GYRO_OS_BSD
 #include <cerrno>
 #include <ctime>
 

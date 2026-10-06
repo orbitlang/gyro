@@ -5,10 +5,11 @@
 #ifndef GYRO_PLATFORM_BACKEND_H_
 #define GYRO_PLATFORM_BACKEND_H_
 
-// platform/backend.h
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#include <gyro/platform.h>
+
+#if GYRO_OS_WINDOWS
 #include "platform/win/backend.h"
-#elif defined(__linux__)
+#elif GYRO_OS_LINUX
 #include "platform/linux/backend.h"
 #else
 #include "platform/bsd/backend.h"

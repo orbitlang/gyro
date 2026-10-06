@@ -2,7 +2,9 @@
 //
 // Licensed under the Apache License v2.0
 
-#if defined(_WIN32)
+#include <gyro/platform.h>
+
+#if GYRO_OS_WINDOWS
 #include <winsock2.h>
 #include <windows.h>
 #else
@@ -41,7 +43,7 @@
 // GYRO_CB_RETRY and EINTR is retried inside the operation, so neither ever
 // reaches a caller.
 int gyro::ErrorToStatus(const int error) {
-#if defined(_WIN32)
+#if GYRO_OS_WINDOWS
     switch (error) {
         case WSAEINVAL: return GYRO_EINVAL;
         case WSAENOBUFS: return GYRO_ENOMEM;

@@ -2,7 +2,9 @@
 //
 // Licensed under the Apache License v2.0
 
-#if !defined(WIN32) && !defined(_WIN32) && !defined(__WIN32__) && !defined(__NT__)
+#include <gyro/platform.h>
+
+#if GYRO_OS_POSIX
 
 #include <cerrno>
 

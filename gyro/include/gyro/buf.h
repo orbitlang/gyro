@@ -7,6 +7,8 @@
 
 #include <stddef.h>
 
+#include <gyro/platform.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -28,7 +30,7 @@ extern "C" {
  * be handed to it with a cast, with no conversion and no temporary.
  * The field names are the same everywhere, so callers do not notice.
  */
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#if GYRO_OS_WINDOWS
 typedef struct gyro_buf {
     unsigned long len;
     char *base;

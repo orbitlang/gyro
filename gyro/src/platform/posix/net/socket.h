@@ -7,6 +7,8 @@
 
 #include <sys/socket.h>
 
+#include <gyro/platform.h>
+
 #include "handle_internal.h"
 
 /**
@@ -18,7 +20,7 @@
  * could be added; being wrong there is a build failure rather than a silent
  * fallback, so they are left out until somebody builds on them.
  */
-#if (defined(__linux__) || defined(__FreeBSD__)) && defined(SOCK_CLOEXEC) && defined(SOCK_NONBLOCK)
+#if (GYRO_OS_LINUX || defined(__FreeBSD__)) && defined(SOCK_CLOEXEC) && defined(SOCK_NONBLOCK)
 #define GYRO_HAS_ACCEPT4 1
 #endif
 

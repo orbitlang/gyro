@@ -9,7 +9,7 @@
 
 #include <gyro/os.h>
 
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#if GYRO_OS_WINDOWS
 #include <ws2def.h>
 #else
 #include <sys/socket.h>

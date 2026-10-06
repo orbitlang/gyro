@@ -9,6 +9,7 @@ set(GYRO_PUBLIC_HEADERS
         include/gyro/handle.h
         include/gyro/loop.h
         include/gyro/os.h
+        include/gyro/platform.h
         include/gyro/request.h
         include/gyro/tcp.h
         include/gyro/timer.h)
@@ -71,8 +72,11 @@ if (MSVC)
     target_compile_options(gyro PRIVATE /EHs-c- /GR-)
     target_compile_definitions(gyro PRIVATE _HAS_EXCEPTIONS=0)
 else ()
+    # -Wundef: The platform macros of gyro/platform.h are always defined,
+    # to 1 or 0, so a misspelled one would otherwise expand to zero and
+    # take a branch that is silently never compiled.
     target_compile_options(gyro PRIVATE
-            -Wall -Wextra -Wpedantic -Wshadow -Wconversion
+            -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wundef
             $<$<BOOL:${GYRO_WERROR}>:-Werror>)
 
     # Nothing C++ crosses the ABI boundary.

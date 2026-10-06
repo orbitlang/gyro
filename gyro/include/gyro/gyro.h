@@ -18,6 +18,7 @@
 #include <gyro/handle.h>
 #include <gyro/loop.h>
 #include <gyro/os.h>
+#include <gyro/platform.h>
 #include <gyro/request.h>
 #include <gyro/timer.h>
 #include <gyro/version.h>
