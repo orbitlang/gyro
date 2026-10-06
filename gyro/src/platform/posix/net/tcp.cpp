@@ -4,7 +4,6 @@
 
 #include <cerrno>
 
-#include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
 
@@ -20,6 +19,7 @@
 #include "error_internal.h"
 #include "gyro_internal.h"
 #include "handle_internal.h"
+#include "socket.h"
 
 struct GyroTcp {
     GyroHandle handle;
@@ -73,27 +73,14 @@ static void SkipEmpty(gyro_buf_t **bufs, unsigned int *nbufs, size_t *offset) {
  * process. Linux does the last one per call with MSG_NOSIGNAL, the BSDs per
  * socket with SO_NOSIGPIPE, so both are applied where they exist.
  */
-static bool ConfigureSocket(const int fd) {
-    int flags = fcntl(fd, F_GETFL, 0);
-    if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0)
-        return false;
-
-    flags = fcntl(fd, F_GETFD, 0);
-    if (flags < 0 || fcntl(fd, F_SETFD, flags | FD_CLOEXEC) < 0)
-        return false;
-
-#if defined(SO_NOSIGPIPE)
-    constexpr int on = 1;
-
-    setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
-#endif
-
-    return true;
-}
-
 static int AcceptOnce(const int handle, GyroHandle *peer) {
     do {
+        // The hot path of a server: one syscall instead of three per connection accepted.
+#if defined(GYRO_HAS_ACCEPT4)
+        const int fd = accept4(handle, nullptr, nullptr, gyro::kSockCreateFlags);
+#else
         const int fd = accept(handle, nullptr, nullptr);
+#endif
         if (fd < 0) {
             if (errno == EINTR)
                 continue;
@@ -109,9 +96,8 @@ static int AcceptOnce(const int handle, GyroHandle *peer) {
             return gyro::ErrorToStatus(errno);
         }
 
-        if (!ConfigureSocket(fd)) {
-            const int status = gyro::ErrorToStatus(errno);
-
+        const int status = gyro::ConfigureSocket(fd, gyro::kAcceptedDescriptorReady);
+        if (status != GYRO_COMPLETED) {
             close(fd);
 
             return status;
@@ -129,27 +115,6 @@ static int AcceptOnce(const int handle, GyroHandle *peer) {
  * The family is only known once an address turns up, which is why the handle
  * outlives more than one attempt at this.
  */
-static int OpenSocket(GyroTcp *tcp, const int family) {
-    if (tcp->handle.handle != gyro::kInvalidSocket)
-        return GYRO_COMPLETED;
-
-    const int fd = socket(family, SOCK_STREAM, 0);
-    if (fd < 0)
-        return gyro::ErrorToStatus(errno);
-
-    if (!ConfigureSocket(fd)) {
-        const int error = gyro::ErrorToStatus(errno);
-
-        close(fd);
-
-        return error;
-    }
-
-    tcp->handle.handle = fd;
-
-    return GYRO_COMPLETED;
-}
-
 static ssize_t ReadOnce(const int fd, const gyro_buf_t *bufs, unsigned int nbufs) {
     if (nbufs > (unsigned int) IOV_MAX)
         nbufs = IOV_MAX;
@@ -339,7 +304,7 @@ int gyro_tcp_bind(gyro_tcp_t *tcp, const sockaddr *addr, const size_t addrlen, c
 
     // Nothing here belongs to the loop: the descriptor is the handle's own,
     // and setting one up is ordered against using it by the caller, not by us.
-    const int status = OpenSocket(tcp, addr->sa_family);
+    const int status = gyro::OpenSocket(&tcp->handle, addr->sa_family, SOCK_STREAM);
     if (status != GYRO_COMPLETED)
         return status;
 
@@ -367,7 +332,7 @@ int gyro_tcp_connect(gyro_tcp_t *tcp, const sockaddr *addr, const size_t addrlen
     if (!gyro::IsActive(&tcp->handle))
         return GYRO_EBADF;
 
-    const auto status = OpenSocket(tcp, addr->sa_family);
+    const auto status = gyro::OpenSocket(&tcp->handle, addr->sa_family, SOCK_STREAM);
     if (status != GYRO_COMPLETED)
         return status;
 
@@ -416,7 +381,7 @@ int gyro_tcp_open(gyro_tcp_t *tcp, const int family) {
     if (!gyro::IsActive(&tcp->handle))
         return GYRO_EBADF;
 
-    return OpenSocket(tcp, family);
+    return gyro::OpenSocket(&tcp->handle, family, SOCK_STREAM);
 }
 
 GYRO_API int gyro_tcp_read(gyro_tcp_t *tcp, gyro_buf_t *bufs, const unsigned int nbufs, const long long timeout,

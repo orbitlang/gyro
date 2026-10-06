@@ -24,6 +24,7 @@ set(GYRO_SOURCES
         src/platform/linux/iopoll.cpp
         src/platform/posix/oshandle.cpp
         src/platform/posix/net/tcp.cpp
+        src/platform/posix/net/socket.cpp
         src/platform/win/iopoll.cpp)
 
 if (GYRO_BUILD_SHARED)
