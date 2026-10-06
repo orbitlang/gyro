@@ -16,6 +16,9 @@ gyro_t *gyro_handle_loop(const gyro_handle_t *handle) {
 }
 
 int gyro_handle_close(gyro_handle_t *handle, const gyro_close_cb cb) {
+    if (handle == nullptr)
+        return GYRO_COMPLETED;
+
     auto *loop = handle->gyro;
 
     gyro::RequestIndex tk{};

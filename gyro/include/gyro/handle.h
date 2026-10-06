@@ -59,7 +59,11 @@ GYRO_API gyro_t *gyro_handle_loop(const gyro_handle_t *handle);
  * picked up by the loop, is cancelled like the rest: the close travels the
  * same queue and reaches the loop behind it.
  *
- * @param cb Invoked when the handle is gone. May be NULL.
+ * @param handle Handle to close. NULL is accepted and does nothing, so the
+ *             NULL a constructor returns when the allocator refused needs no
+ *             separate path out.
+ * @param cb Invoked when the handle is gone. May be NULL. Not invoked when
+ *         @p handle is NULL, since there is nothing to report on.
  * @return GYRO_COMPLETED, or GYRO_ENOMEM when the request store could not
  *       provide the note that carries the close to the loop.
  *

@@ -1238,6 +1238,21 @@ namespace {
         EXPECT_EQ(buried.load(), kHandles);
     }
 
+    TEST_F(TcpTest, ClosingNothingSucceedsAndReportsNothing) {
+        // The NULL a constructor returns when the allocator refuses goes down
+        // the same teardown as a real handle, so that failing to create one
+        // does not need a shape of cleanup of its own.
+        this->closed = 0;
+
+        EXPECT_EQ(gyro_handle_close(nullptr, OnClose), GYRO_COMPLETED);
+        EXPECT_EQ(gyro_handle_close(nullptr, nullptr), GYRO_COMPLETED);
+
+        // Nothing was posted, so an idle loop stays idle and the callback that
+        // had nothing to report was not called.
+        EXPECT_EQ(gyro_run(this->loop), GYRO_COMPLETED);
+        EXPECT_EQ(this->closed, 0);
+    }
+
     TEST_F(TcpTest, ClosingReportsEveryPendingOperationFirst) {
         char storage[64];
         gyro_buf_t buf{storage, sizeof(storage)};
