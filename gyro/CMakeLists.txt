@@ -12,7 +12,8 @@ set(GYRO_PUBLIC_HEADERS
         include/gyro/platform.h
         include/gyro/request.h
         include/gyro/tcp.h
-        include/gyro/timer.h)
+        include/gyro/timer.h
+        include/gyro/udp.h)
 
 set(GYRO_SOURCES
         src/allocator.cpp
@@ -25,6 +26,7 @@ set(GYRO_SOURCES
         src/platform/linux/iopoll.cpp
         src/platform/posix/oshandle.cpp
         src/platform/posix/net/tcp.cpp
+        src/platform/posix/net/udp.cpp
         src/platform/posix/net/socket.cpp
         src/platform/win/iopoll.cpp)
 

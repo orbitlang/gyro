@@ -21,6 +21,7 @@
 #include <gyro/platform.h>
 #include <gyro/request.h>
 #include <gyro/timer.h>
+#include <gyro/udp.h>
 #include <gyro/version.h>
 
 // Network

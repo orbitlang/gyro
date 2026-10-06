@@ -34,6 +34,7 @@
     XX(GYRO_EPIPE, "broken pipe")                                           \
     XX(GYRO_EHOSTUNREACH, "host is unreachable")                            \
     XX(GYRO_ENETUNREACH, "network is unreachable")                          \
+    XX(GYRO_EMSGSIZE, "message too long")                                   \
     XX(GYRO_EADDRINUSE, "address already in use")                           \
     XX(GYRO_EADDRNOTAVAIL, "address not available")                         \
     XX(GYRO_EMFILE, "too many open files")                                  \
@@ -70,6 +71,7 @@ int gyro::ErrorToStatus(const int error) {
         case WSAENETRESET: return GYRO_ENETUNREACH;
 
         case WSAEADDRINUSE: return GYRO_EADDRINUSE;
+        case WSAEMSGSIZE: return GYRO_EMSGSIZE;
         case WSAEADDRNOTAVAIL: return GYRO_EADDRNOTAVAIL;
         case WSAEMFILE: return GYRO_EMFILE;
         case WSAEACCES: return GYRO_EACCES;
@@ -111,6 +113,7 @@ int gyro::ErrorToStatus(const int error) {
         case ENETRESET: return GYRO_ENETUNREACH;
 
         case EADDRINUSE: return GYRO_EADDRINUSE;
+        case EMSGSIZE: return GYRO_EMSGSIZE;
         case EADDRNOTAVAIL: return GYRO_EADDRNOTAVAIL;
         case EMFILE:
         case ENFILE: return GYRO_EMFILE;
