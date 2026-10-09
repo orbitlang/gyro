@@ -63,6 +63,15 @@ struct GyroRequest {
         bool cancel_on_timeout;
     } timer;
 
+    union {
+        /// Datagram endpoint. A send copies its destination here, so the caller's
+        /// address is free the moment the call returns; a receive keeps the
+        /// caller's pointer, since the sender has to end up in the caller's memory.
+        alignas(8) unsigned char to[28];
+
+        struct sockaddr_storage *from;
+    };
+
     struct {
         union {
             GyroHandle *peer;
@@ -77,7 +86,11 @@ struct GyroRequest {
 
         unsigned int nbufs;
 
-        size_t offset;
+        union {
+            size_t addrlen;
+
+            size_t offset;
+        };
 
         uint64_t transferred;
     } io;

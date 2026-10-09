@@ -13,15 +13,83 @@
 
 #include <gyro/error.h>
 #include <gyro/udp.h>
+#include <netinet6/in6.h>
 
 #include "error_internal.h"
 #include "gyro_internal.h"
 #include "handle_internal.h"
 #include "socket.h"
 
+static_assert(sizeof(sockaddr_in6) <= sizeof(GyroRequest::to),
+              "GyroRequest::to must hold a sockaddr_in6");
+
 struct GyroUdp {
     GyroHandle handle;
 };
+
+// ---------------------------------------------------------------------------
+// Transfers
+// ---------------------------------------------------------------------------
+
+static int RecvOnce(const int fd, const gyro_buf_t *bufs, const unsigned int nbufs, sockaddr_storage *from, size_t *n) {
+    msghdr msg{};
+
+    msg.msg_name = from;
+    msg.msg_namelen = from != nullptr ? (socklen_t) sizeof(sockaddr_storage) : 0;
+    msg.msg_iov = (iovec *) bufs;
+    msg.msg_iovlen = (int) nbufs;
+
+    ssize_t ret;
+    do
+        ret = recvmsg(fd, &msg, 0);
+    while (ret < 0 && errno == EINTR);
+
+    if (ret < 0) {
+        *n = 0;
+
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
+            return GYRO_PENDING;
+
+        return gyro::ErrorToStatus(errno);
+    }
+
+    *n = (size_t) ret;
+
+    return (msg.msg_flags & MSG_TRUNC) ? GYRO_EMSGSIZE : GYRO_COMPLETED;
+}
+
+static int SendOnce(const int fd, const gyro_buf_t *bufs, const unsigned int nbufs, const sockaddr *to,
+                    const size_t tolen, size_t *n) {
+    msghdr msg{};
+
+    msg.msg_name = (void *) to;
+    msg.msg_namelen = to != nullptr ? (socklen_t) tolen : 0;
+    msg.msg_iov = (iovec *) bufs;
+    msg.msg_iovlen = (int) nbufs;
+
+    int flags = 0;
+#if defined(MSG_NOSIGNAL)
+    flags |= MSG_NOSIGNAL;
+#endif
+
+    ssize_t ret;
+    do
+        ret = sendmsg(fd, &msg, flags);
+    while (ret < 0 && errno == EINTR);
+
+    if (ret < 0) {
+        *n = 0;
+
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
+            return GYRO_PENDING;
+
+        return gyro::ErrorToStatus(errno);
+    }
+
+    *n = (size_t) ret;
+
+    return GYRO_COMPLETED;
+}
 
 // ---------------------------------------------------------------------------
 // Public
