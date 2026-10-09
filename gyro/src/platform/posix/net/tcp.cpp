@@ -239,23 +239,6 @@ static gyro_cb_status_t TcpWriteOp(gyro_handle_t *handle, gyro_op_t *op) {
 }
 
 // ---------------------------------------------------------------------------
-// Submission
-// ---------------------------------------------------------------------------
-
-static int CheckSubmittable(const GyroTcp *tcp) {
-    if (tcp == nullptr)
-        return GYRO_EINVAL;
-
-    if (!gyro::IsActive(&tcp->handle))
-        return GYRO_EBADF;
-
-    if (tcp->handle.handle == gyro::kInvalidSocket)
-        return GYRO_EINVAL;
-
-    return GYRO_COMPLETED;
-}
-
-// ---------------------------------------------------------------------------
 // Public
 // ---------------------------------------------------------------------------
 
@@ -268,7 +251,7 @@ int gyro_tcp_accept(gyro_tcp_t *tcp, gyro_tcp_t *client, const long long timeout
     if (client == nullptr || client->handle.handle != gyro::kInvalidSocket)
         return GYRO_EINVAL;
 
-    auto status = CheckSubmittable(tcp);
+    auto status = gyro::CheckSubmittable((gyro_handle_t *) tcp);
     if (status != GYRO_COMPLETED)
         return status;
 
@@ -405,7 +388,7 @@ GYRO_API int gyro_tcp_read(gyro_tcp_t *tcp, gyro_buf_t *bufs, const unsigned int
     if (bufs == nullptr || nbufs == 0)
         return GYRO_EINVAL;
 
-    int status = CheckSubmittable(tcp);
+    int status = gyro::CheckSubmittable((gyro_handle_t *) tcp);
     if (status != GYRO_COMPLETED)
         return status;
 
@@ -456,7 +439,7 @@ int gyro_tcp_write(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbufs, const 
     if (bufs == nullptr || nbufs == 0)
         return GYRO_EINVAL;
 
-    int status = CheckSubmittable(tcp);
+    int status = gyro::CheckSubmittable((gyro_handle_t *) tcp);
     if (status != GYRO_COMPLETED)
         return status;
 

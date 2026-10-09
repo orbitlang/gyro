@@ -51,14 +51,15 @@
  * nothing else is outstanding in that direction, and the same per-direction
  * order for the ones that are not.
  *
- * **One rule covers everything handed to an operation**, and the addresses are
- * not an exception to it: the regions, the address a send is aimed at and the
- * one a receive fills in all have to stay valid, and unmodified, until the
- * operation reports. An operation the loop takes over keeps the pointers and
- * uses them later, so anything with a shorter life than the operation works
- * only while the fast path keeps winning. Note that gyro_udp_bind() and
- * gyro_udp_connect() are the other way round: they finish inside the call, so
- * what they are given is read and done with before they return.
+ * **Addresses given are read in the call; addresses asked for are written
+ * later.** The destination of a send is copied before gyro_udp_send() returns,
+ * as is what gyro_udp_bind() and gyro_udp_connect() are given, so all of them
+ * may live on the stack. The regions, and the address a receive fills in with
+ * the sender, are the other way round: an operation the loop takes over keeps
+ * the pointers and uses them when the datagram moves, so they have to stay
+ * valid, and the regions unmodified, until the operation reports. Anything
+ * with a shorter life works only while the fast path keeps winning, which is
+ * the worst way for it to fail.
  *
  * There is no accept and no listen: a UDP socket has no connections to accept.
  * gyro_udp_connect() exists, but it does something much smaller than its TCP
@@ -97,7 +98,9 @@ typedef struct GyroUdp gyro_udp_t;
  *
  * Needed to receive anything: a socket nobody can address receives nothing. A
  * socket that only sends can skip it, and the kernel picks a port on the first
- * send.
+ * send, but it still needs a descriptor to send from: open one with
+ * gyro_udp_open(), or let gyro_udp_connect() open it. A send on a handle that
+ * has none is refused, since its family is not known yet.
  *
  * Opens the descriptor if it does not exist yet: the address is what tells gyro
  * which family to open it for.
@@ -122,7 +125,9 @@ GYRO_API int gyro_udp_bind(gyro_udp_t *udp, const struct sockaddr *addr, size_t 
  * the destination, datagrams from anybody else are dropped before they reach
  * the application, and the ICMP errors the network reports for this peer start
  * being delivered, so a receive can report GYRO_ECONNREFUSED where before it
- * would have waited for ever.
+ * would have waited for ever. The error is parked on the socket rather than on
+ * an operation, and whichever operation runs next collects it: it may just as
+ * well be a send.
  *
  * Opens the descriptor if it does not exist yet. May be called again to point
  * the socket at a different peer.
@@ -181,31 +186,39 @@ GYRO_API int gyro_udp_open(gyro_udp_t *udp, int family);
  *
  * @param bufs Regions to fill, in order. They and the array naming them must
  *           stay valid, and unmodified, until the operation reports.
+ * @param nbufs How many regions there are: at least one, and no more than the
+ *            system takes in a single call (IOV_MAX on POSIX). More is refused
+ *            rather than split, since splitting would make it two datagrams.
  * @param from Receives the sender's address, or NULL when it does not matter,
- *           which is the usual case on a connected socket. Written when the
- *           operation reports, so like @p bufs it must stay valid until then.
- * @param fromlen On the way in, the room @p from offers; on the way out, the
- *              length actually written. Required when @p from is given, and
- *              ignored when it is NULL.
+ *           which is the usual case on a connected socket. A whole
+ *           sockaddr_storage, so that a sender of either family fits; its
+ *           length is not reported because its family already says it.
+ *           Written when the datagram arrives, so like @p bufs it must stay
+ *           valid until the operation reports.
  * @param timeout Milliseconds before the receive is given up on, or 0 for
  *              none. A deadline that arrives reports GYRO_ETIMEDOUT, distinct
  *              from the GYRO_ECANCELED of a cancellation somebody asked for.
  * @param cb Reports the outcome. Not called when GYRO_COMPLETED is returned.
+ *         On GYRO_EMSGSIZE its `transferred` is the bytes that did fit.
  * @param token Receives the token naming the operation, or NULL. Set to an
  *            invalid token unless GYRO_PENDING is returned.
  * @param transferred Receives the byte count when a datagram was already
- *                  waiting, or NULL. Set to 0 in every other case, which for a
- *                  datagram of length zero is also the true answer.
- * @return GYRO_PENDING, GYRO_COMPLETED when a datagram was already waiting, or
- *       a negative status. Never GYRO_EOF: a UDP socket has no end.
+ *                  waiting, or NULL: the whole of it on GYRO_COMPLETED, and
+ *                  the part that fit on GYRO_EMSGSIZE. Set to 0 in every other
+ *                  case, which for a datagram of length zero is also the true
+ *                  answer.
+ * @return GYRO_PENDING, GYRO_COMPLETED when a datagram was already waiting,
+ *       GYRO_EMSGSIZE when one was waiting and did not fit, or another
+ *       negative status: GYRO_EINVAL for a handle with no descriptor yet or an
+ *       unusable @p nbufs. Never GYRO_EOF: a UDP socket has no end.
  *
  * @note Thread-safe: the receive may be carried out on the calling thread when
  *       nothing else is outstanding in that direction, and is otherwise handed
  *       to the loop and reported later.
  */
-GYRO_API int gyro_udp_recv(gyro_udp_t *udp, gyro_buf_t *bufs, unsigned int nbufs, struct sockaddr *from,
-                           size_t *fromlen, long long timeout, gyro_rq_user_cb cb, void *data,
-                           gyro_request_t *token, size_t *transferred);
+GYRO_API int gyro_udp_recv(gyro_udp_t *udp, gyro_buf_t *bufs, unsigned int nbufs, struct sockaddr_storage *from,
+                           long long timeout, gyro_rq_user_cb cb, void *data, gyro_request_t *token,
+                           size_t *transferred);
 
 /**
  * @brief Sends one datagram.
@@ -223,14 +236,18 @@ GYRO_API int gyro_udp_recv(gyro_udp_t *udp, gyro_buf_t *bufs, unsigned int nbufs
  *
  * @param bufs Regions to send, in order. They and the array naming them must
  *           stay valid, and unmodified, until the operation reports.
+ * @param nbufs How many regions there are: at least one, and no more than the
+ *            system takes in a single call (IOV_MAX on POSIX). More is refused
+ *            rather than split, since splitting would send two datagrams where
+ *            one was asked for.
  * @param to Where to send it, or NULL to use the peer set by
- *         gyro_udp_connect(). Like the regions, and for the same reason, it
- *         must stay valid until the operation reports: a send the loop takes
- *         over keeps the pointer and reads it when the socket has room. An
- *         address on the stack therefore works whenever the send goes out at
- *         once and fails when it does not, which is the worst way for it to
- *         fail; give it the lifetime of the operation, as you would a buffer.
- * @param tolen Length of @p to, and ignored when it is NULL.
+ *         gyro_udp_connect(). Its family must be AF_INET or AF_INET6. Unlike
+ *         the regions it is copied before this returns, so it may live on the
+ *         stack and be reused at once, whether the send goes out now or later.
+ * @param tolen Room @p to offers, and ignored when it is NULL. It must cover
+ *            the address its family describes; only that much is read, and
+ *            that much is what the kernel is given, so a sockaddr_in held in
+ *            a sockaddr_storage may be passed with the storage's size.
  * @param timeout Milliseconds before the send is given up on, or 0 for none.
  *              Rarely of use: a send waits only for room in the socket's own
  *              buffer, never for the network.
@@ -241,7 +258,11 @@ GYRO_API int gyro_udp_recv(gyro_udp_t *udp, gyro_buf_t *bufs, unsigned int nbufs
  *                  once, or NULL. Set to 0 in every other case.
  * @return GYRO_PENDING, GYRO_COMPLETED when the datagram went out at once,
  *       which is the normal case, or a negative status such as GYRO_EMSGSIZE
- *       for a datagram larger than the path will carry.
+ *       for a datagram larger than the path will carry, or GYRO_EINVAL for a
+ *       handle with no descriptor yet, an unusable @p nbufs, or a @p to of
+ *       another family or shorter than its family needs. With @p to NULL on
+ *       a socket that was never connected, the send fails: there is nowhere
+ *       for it to go.
  *
  * @note Thread-safe: the send may be carried out on the calling thread when
  *       nothing else is outstanding in that direction, and is otherwise handed

@@ -7,13 +7,14 @@
 #if GYRO_OS_POSIX
 
 #include <cerrno>
+#include <cstring>
 #include <new>
 
 #include <sys/socket.h>
 
 #include <gyro/error.h>
 #include <gyro/udp.h>
-#include <netinet6/in6.h>
+#include <netinet/in.h>
 
 #include "error_internal.h"
 #include "gyro_internal.h"
@@ -45,7 +46,8 @@ static int RecvOnce(const int fd, const gyro_buf_t *bufs, const unsigned int nbu
     while (ret < 0 && errno == EINTR);
 
     if (ret < 0) {
-        *n = 0;
+        if (n != nullptr)
+            *n = 0;
 
         if (errno == EAGAIN || errno == EWOULDBLOCK)
             return GYRO_PENDING;
@@ -53,7 +55,8 @@ static int RecvOnce(const int fd, const gyro_buf_t *bufs, const unsigned int nbu
         return gyro::ErrorToStatus(errno);
     }
 
-    *n = (size_t) ret;
+    if (n != nullptr)
+        *n = (size_t) ret;
 
     return (msg.msg_flags & MSG_TRUNC) ? GYRO_EMSGSIZE : GYRO_COMPLETED;
 }
@@ -89,6 +92,44 @@ static int SendOnce(const int fd, const gyro_buf_t *bufs, const unsigned int nbu
     *n = (size_t) ret;
 
     return GYRO_COMPLETED;
+}
+
+// ---------------------------------------------------------------------------
+// Operations
+// ---------------------------------------------------------------------------
+
+
+static gyro_cb_status_t UDPRecvOp(gyro_handle_t *handle, gyro_op_t *op) {
+    size_t recv_bytes;
+    const auto err = RecvOnce(handle->handle, op->io.buf, op->io.nbufs, op->from, &recv_bytes);
+    if (err == GYRO_COMPLETED || err == GYRO_EMSGSIZE) {
+        gyro_op_complete(op, err, recv_bytes);
+
+        return GYRO_CB_SUCCESS;
+    }
+
+    if (err == GYRO_PENDING)
+        return GYRO_CB_RETRY;
+
+    gyro_op_complete(op, err, 0);
+
+    return GYRO_CB_FAILURE;
+}
+
+static gyro_cb_status_t UDPSendOp(gyro_handle_t *handle, gyro_op_t *op) {
+    size_t send_bytes;
+    const auto err = SendOnce(handle->handle,
+                              op->io.buf,
+                              op->io.nbufs,
+                              op->io.addrlen != 0 ? (const sockaddr *) op->to : nullptr,
+                              op->io.addrlen,
+                              &send_bytes);
+    if (err == GYRO_PENDING)
+        return GYRO_CB_RETRY;
+
+    gyro_op_complete(op, err, send_bytes);
+
+    return err == GYRO_COMPLETED ? GYRO_CB_SUCCESS : GYRO_CB_FAILURE;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,16 +197,116 @@ int gyro_udp_open(gyro_udp_t *udp, const int family) {
     return gyro::OpenSocket(&udp->handle, family, SOCK_DGRAM);
 }
 
-int gyro_udp_recv(gyro_udp_t *udp, gyro_buf_t *bufs, const unsigned int nbufs, sockaddr *from, size_t *fromlen,
-                  const long long timeout, const gyro_rq_user_cb cb, void *data, gyro_request_t *token,
-                  size_t *transferred) {
-    return GYRO_ENOTSUP;
+int gyro_udp_recv(gyro_udp_t *udp, gyro_buf_t *bufs, const unsigned int nbufs, sockaddr_storage *from,
+                  const long long timeout,
+                  const gyro_rq_user_cb cb, void *data, gyro_request_t *token, size_t *transferred) {
+    if (token != nullptr)
+        *token = gyro_request_invalid();
+
+    if (transferred != nullptr)
+        *transferred = 0;
+
+    if (bufs == nullptr || nbufs == 0 || nbufs > IOV_MAX)
+        return GYRO_EINVAL;
+
+    int status = gyro::CheckSubmittable((gyro_handle_t *) udp);
+    if (status != GYRO_COMPLETED)
+        return status;
+
+    gyro::InlineGate gate((GyroHandle *) udp, GYRO_DIR_IN);
+    if (gate.MayTry()) {
+        const auto err = RecvOnce(udp->handle.handle, bufs, nbufs, from, transferred);
+        if (err != GYRO_PENDING)
+            return err;
+    }
+
+    GyroRequest *request;
+    status = gyro::NewRequest((GyroHandle *) udp, GYRO_DIR_IN, UDPRecvOp, cb, data, &request);
+    if (status != GYRO_COMPLETED)
+        return status;
+
+    request->from = from;
+    request->io.buf = bufs;
+    request->io.nbufs = nbufs;
+
+    gate.Transfer();
+
+    status = gyro::Submit(request, token, timeout);
+    if (status != GYRO_COMPLETED)
+        return status;
+
+    return GYRO_PENDING;
 }
 
 int gyro_udp_send(gyro_udp_t *udp, gyro_buf_t *bufs, const unsigned int nbufs, const sockaddr *to, const size_t tolen,
                   const long long timeout, const gyro_rq_user_cb cb, void *data, gyro_request_t *token,
                   size_t *transferred) {
-    return GYRO_ENOTSUP;
+    if (token != nullptr)
+        *token = gyro_request_invalid();
+
+    if (transferred != nullptr)
+        *transferred = 0;
+
+    if (bufs == nullptr || nbufs == 0 || nbufs > IOV_MAX)
+        return GYRO_EINVAL;
+
+    size_t addrlen = 0;
+    if (to != nullptr) {
+        if (to->sa_family == AF_INET)
+            addrlen = sizeof(sockaddr_in);
+        else if (to->sa_family == AF_INET6)
+            addrlen = sizeof(sockaddr_in6);
+        else
+            return GYRO_EINVAL;
+
+        if (tolen < addrlen)
+            return GYRO_EINVAL;
+    }
+
+    int status = gyro::CheckSubmittable((gyro_handle_t *) udp);
+    if (status != GYRO_COMPLETED)
+        return status;
+
+    gyro::InlineGate gate((GyroHandle *) udp, GYRO_DIR_OUT);
+    if (gate.MayTry()) {
+        size_t send_bytes;
+        const auto err = SendOnce(udp->handle.handle,
+                                  bufs,
+                                  nbufs,
+                                  to,
+                                  addrlen,
+                                  &send_bytes);
+        if (err == GYRO_COMPLETED || err == GYRO_EMSGSIZE) {
+            if (transferred != nullptr)
+                *transferred = send_bytes;
+
+            return err;
+        }
+
+        if (err != GYRO_PENDING)
+            return err;
+    }
+
+    GyroRequest *request;
+    status = gyro::NewRequest((GyroHandle *) udp, GYRO_DIR_OUT, UDPSendOp, cb, data, &request);
+    if (status != GYRO_COMPLETED)
+        return status;
+
+    if (to != nullptr) {
+        memcpy(request->to, to, addrlen);
+        request->io.addrlen = addrlen;
+    }
+
+    request->io.buf = bufs;
+    request->io.nbufs = nbufs;
+
+    gate.Transfer();
+
+    status = gyro::Submit(request, token, timeout);
+    if (status != GYRO_COMPLETED)
+        return status;
+
+    return GYRO_PENDING;
 }
 
 gyro_socket_t gyro_udp_fileno(const gyro_udp_t *udp) {

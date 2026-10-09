@@ -47,6 +47,8 @@ namespace gyro {
         return handle->state.load(std::memory_order_acquire) == HandleState::ACTIVE;
     }
 
+    int CheckSubmittable(const GyroHandle *handle);
+
     template<typename T>
     std::conditional_t<
         std::is_const_v<std::remove_pointer_t<std::remove_reference_t<T> > >,

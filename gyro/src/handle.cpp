@@ -10,6 +10,19 @@
 #include "gyro_internal.h"
 #include "handle_internal.h"
 
+int gyro::CheckSubmittable(const GyroHandle *handle) {
+    if (handle == nullptr)
+        return GYRO_EINVAL;
+
+    if (!IsActive(handle))
+        return GYRO_EBADF;
+
+    if (handle->handle == kInvalidSocket)
+        return GYRO_EINVAL;
+
+    return GYRO_COMPLETED;
+}
+
 extern "C" {
 gyro_t *gyro_handle_loop(const gyro_handle_t *handle) {
     return handle->gyro;
