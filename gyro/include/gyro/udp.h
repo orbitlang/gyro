@@ -72,6 +72,14 @@
  * a handle type of their own rather than to a pile of exceptions here. The
  * machinery underneath would be shared, not the contract.
  *
+ * **Addresses carry no length**, because their family already says it: a
+ * sockaddr_in for AF_INET, a sockaddr_in6 for AF_INET6. Pass either, or a
+ * sockaddr_storage holding one; gyro reads exactly as many bytes as the family
+ * names and gives the kernel that length and no other. A length taken from the
+ * caller would be one more thing to get wrong, and one the systems do not even
+ * agree on: Darwin refuses a sockaddr_in announced with the size of a whole
+ * sockaddr_storage, where Linux accepts it.
+ *
  * Multicast, broadcast, time to live, SO_REUSEPORT and the rest have no calls
  * of their own: open the socket with gyro_udp_open(), set what you need through
  * gyro_udp_fileno(), then bind or send.
@@ -114,7 +122,7 @@ typedef struct GyroUdp gyro_udp_t;
  * @note Thread-safe, and synchronous wherever it is called: the answer is the
  *       kernel's and comes back at once.
  */
-GYRO_API int gyro_udp_bind(gyro_udp_t *udp, const struct sockaddr *addr, size_t addrlen, unsigned int flags);
+GYRO_API int gyro_udp_bind(gyro_udp_t *udp, const struct sockaddr *addr, unsigned int flags);
 
 /**
  * @brief Fixes the peer this socket talks to.
@@ -147,7 +155,7 @@ GYRO_API int gyro_udp_bind(gyro_udp_t *udp, const struct sockaddr *addr, size_t 
  *
  * @note Thread-safe, and synchronous.
  */
-GYRO_API int gyro_udp_connect(gyro_udp_t *udp, const struct sockaddr *addr, size_t addrlen);
+GYRO_API int gyro_udp_connect(gyro_udp_t *udp, const struct sockaddr *addr);
 
 /**
  * @brief Opens the descriptor without doing anything with it yet.
@@ -244,10 +252,6 @@ GYRO_API int gyro_udp_recv(gyro_udp_t *udp, gyro_buf_t *bufs, unsigned int nbufs
  *         gyro_udp_connect(). Its family must be AF_INET or AF_INET6. Unlike
  *         the regions it is copied before this returns, so it may live on the
  *         stack and be reused at once, whether the send goes out now or later.
- * @param tolen Room @p to offers, and ignored when it is NULL. It must cover
- *            the address its family describes; only that much is read, and
- *            that much is what the kernel is given, so a sockaddr_in held in
- *            a sockaddr_storage may be passed with the storage's size.
  * @param timeout Milliseconds before the send is given up on, or 0 for none.
  *              Rarely of use: a send waits only for room in the socket's own
  *              buffer, never for the network.
@@ -260,17 +264,16 @@ GYRO_API int gyro_udp_recv(gyro_udp_t *udp, gyro_buf_t *bufs, unsigned int nbufs
  *       which is the normal case, or a negative status such as GYRO_EMSGSIZE
  *       for a datagram larger than the path will carry, or GYRO_EINVAL for a
  *       handle with no descriptor yet, an unusable @p nbufs, or a @p to of
- *       another family or shorter than its family needs. With @p to NULL on
- *       a socket that was never connected, the send fails: there is nowhere
- *       for it to go.
+ *       another family. With @p to NULL on a socket that was never connected,
+ *       the send fails: there is nowhere for it to go.
  *
  * @note Thread-safe: the send may be carried out on the calling thread when
  *       nothing else is outstanding in that direction, and is otherwise handed
  *       to the loop and reported later.
  */
 GYRO_API int gyro_udp_send(gyro_udp_t *udp, gyro_buf_t *bufs, unsigned int nbufs, const struct sockaddr *to,
-                           size_t tolen, long long timeout, gyro_rq_user_cb cb, void *data,
-                           gyro_request_t *token, size_t *transferred);
+                           long long timeout, gyro_rq_user_cb cb, void *data, gyro_request_t *token,
+                           size_t *transferred);
 
 /**
  * @brief Returns the socket the handle is built on.

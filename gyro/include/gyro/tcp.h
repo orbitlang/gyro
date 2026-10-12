@@ -54,6 +54,14 @@
  * **This is an IP socket**, AF_INET or AF_INET6, and every call that takes a
  * family or an address refuses anything else.
  *
+ * **Addresses carry no length**, because their family already says it: a
+ * sockaddr_in for AF_INET, a sockaddr_in6 for AF_INET6. Pass either, or a
+ * sockaddr_storage holding one; gyro reads exactly as many bytes as the family
+ * names and gives the kernel that length and no other. A length taken from the
+ * caller would be one more thing to get wrong, and one the systems do not even
+ * agree on: Darwin refuses a sockaddr_in announced with the size of a whole
+ * sockaddr_storage, where Linux accepts it.
+ *
  * Socket options, keepalive, TCP_NODELAY and the rest have no calls of their
  * own: open the socket with gyro_tcp_open(), set what you need through
  * gyro_tcp_fileno(), then bind or connect.
@@ -125,7 +133,7 @@ GYRO_API int gyro_tcp_accept(gyro_tcp_t *tcp, gyro_tcp_t *client, long long time
  *       kernel's and comes back at once. Binding a handle somebody else is
  *       already using is the caller's race, not gyro's.
  */
-GYRO_API int gyro_tcp_bind(gyro_tcp_t *tcp, const struct sockaddr *addr, size_t addrlen, unsigned int flags);
+GYRO_API int gyro_tcp_bind(gyro_tcp_t *tcp, const struct sockaddr *addr, unsigned int flags);
 
 /**
  * @brief Connects to a peer.
@@ -150,7 +158,7 @@ GYRO_API int gyro_tcp_bind(gyro_tcp_t *tcp, const struct sockaddr *addr, size_t 
  *
  * @note Thread-safe.
  */
-GYRO_API int gyro_tcp_connect(gyro_tcp_t *tcp, const struct sockaddr *addr, size_t addrlen, long long timeout,
+GYRO_API int gyro_tcp_connect(gyro_tcp_t *tcp, const struct sockaddr *addr, long long timeout,
                               gyro_rq_user_cb cb, void *data, gyro_request_t *out_token);
 
 /**

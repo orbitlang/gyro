@@ -126,7 +126,7 @@ namespace {
             addr.sin_family = AF_INET;
             addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
-            ASSERT_EQ(gyro_tcp_bind(this->server, (sockaddr *) &addr, sizeof(addr), GYRO_TCP_REUSEADDR),
+            ASSERT_EQ(gyro_tcp_bind(this->server, (sockaddr *) &addr, GYRO_TCP_REUSEADDR),
                       GYRO_COMPLETED);
             ASSERT_EQ(gyro_tcp_listen(this->server, 16), GYRO_COMPLETED);
 
@@ -139,7 +139,7 @@ namespace {
 
             ASSERT_EQ(gyro_tcp_accept(this->server, this->conn, 0, Done, &accepted, nullptr), GYRO_PENDING);
 
-            const int rc = gyro_tcp_connect(this->client, (sockaddr *) &addr, sizeof(addr), 0,
+            const int rc = gyro_tcp_connect(this->client, (sockaddr *) &addr, 0,
                                             Done, &connected, nullptr);
             ASSERT_TRUE(rc == GYRO_PENDING || rc == GYRO_COMPLETED);
             if (rc == GYRO_COMPLETED)
@@ -1052,7 +1052,7 @@ namespace {
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
         addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        ASSERT_EQ(gyro_tcp_bind(early, (sockaddr *) &addr, sizeof(addr), GYRO_TCP_REUSEADDR), GYRO_COMPLETED);
+        ASSERT_EQ(gyro_tcp_bind(early, (sockaddr *) &addr, GYRO_TCP_REUSEADDR), GYRO_COMPLETED);
         EXPECT_EQ(gyro_tcp_fileno(early), first) << "bind replaced the descriptor that had just been configured";
 
         int got = 0;
@@ -1092,7 +1092,7 @@ namespace {
             addr.sin_family = AF_INET;
             addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
-            ASSERT_EQ(gyro_tcp_bind(server, (sockaddr *) &addr, sizeof(addr), GYRO_TCP_REUSEADDR), GYRO_COMPLETED);
+            ASSERT_EQ(gyro_tcp_bind(server, (sockaddr *) &addr, GYRO_TCP_REUSEADDR), GYRO_COMPLETED);
             ASSERT_EQ(gyro_tcp_listen(server, 16), GYRO_COMPLETED);
 
             // Opened on this thread, so readable from it too.
@@ -1102,7 +1102,7 @@ namespace {
 
             ASSERT_EQ(gyro_tcp_accept(server, peer, 0, Done, &accepted, nullptr), GYRO_PENDING);
 
-            const int rc = gyro_tcp_connect(client, (sockaddr *) &addr, sizeof(addr), 0,
+            const int rc = gyro_tcp_connect(client, (sockaddr *) &addr, 0,
                                             Done, &connected, nullptr);
             ASSERT_TRUE(rc == GYRO_PENDING || rc == GYRO_COMPLETED);
         });
@@ -1301,7 +1301,7 @@ namespace {
 
         Report report;
 
-        const int rc = gyro_tcp_connect(lonely, (sockaddr *) &addr, sizeof(addr), 0, Done, &report, nullptr);
+        const int rc = gyro_tcp_connect(lonely, (sockaddr *) &addr, 0, Done, &report, nullptr);
         if (rc == GYRO_PENDING) {
             RunFor(1);
 

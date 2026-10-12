@@ -7,14 +7,16 @@
 #if GYRO_OS_POSIX
 
 #include <cerrno>
+#include <climits> // IOV_MAX
 #include <cstring>
 #include <new>
 
+#include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/uio.h>
 
 #include <gyro/error.h>
 #include <gyro/udp.h>
-#include <netinet/in.h>
 
 #include "error_internal.h"
 #include "gyro_internal.h"
@@ -62,11 +64,11 @@ static int RecvOnce(const int fd, const gyro_buf_t *bufs, const unsigned int nbu
 }
 
 static int SendOnce(const int fd, const gyro_buf_t *bufs, const unsigned int nbufs, const sockaddr *to,
-                    const size_t tolen, size_t *n) {
+                    const socklen_t tolen, size_t *n) {
     msghdr msg{};
 
     msg.msg_name = (void *) to;
-    msg.msg_namelen = to != nullptr ? (socklen_t) tolen : 0;
+    msg.msg_namelen = to != nullptr ? tolen : 0;
     msg.msg_iov = (iovec *) bufs;
     msg.msg_iovlen = (int) nbufs;
 
@@ -122,7 +124,7 @@ static gyro_cb_status_t UDPSendOp(gyro_handle_t *handle, gyro_op_t *op) {
                               op->io.buf,
                               op->io.nbufs,
                               op->io.addrlen != 0 ? (const sockaddr *) op->to : nullptr,
-                              op->io.addrlen,
+                              (socklen_t) op->io.addrlen,
                               &send_bytes);
     if (err == GYRO_PENDING)
         return GYRO_CB_RETRY;
@@ -137,11 +139,12 @@ static gyro_cb_status_t UDPSendOp(gyro_handle_t *handle, gyro_op_t *op) {
 // ---------------------------------------------------------------------------
 
 extern "C" {
-int gyro_udp_bind(gyro_udp_t *udp, const sockaddr *addr, const size_t addrlen, const unsigned int flags) {
-    if (udp == nullptr || addr == nullptr || addrlen == 0)
+int gyro_udp_bind(gyro_udp_t *udp, const sockaddr *addr, const unsigned int flags) {
+    if (udp == nullptr || addr == nullptr)
         return GYRO_EINVAL;
 
-    if (addr->sa_family != AF_INET && addr->sa_family != AF_INET6)
+    const auto addrlen = gyro::AddrLen(addr);
+    if (addrlen == 0)
         return GYRO_EINVAL;
 
     if (!gyro::IsActive(&udp->handle))
@@ -158,17 +161,18 @@ int gyro_udp_bind(gyro_udp_t *udp, const sockaddr *addr, const size_t addrlen, c
             return gyro::ErrorToStatus(errno);
     }
 
-    if (bind(udp->handle.handle, addr, (socklen_t) addrlen) < 0)
+    if (bind(udp->handle.handle, addr, addrlen) < 0)
         return gyro::ErrorToStatus(errno);
 
     return GYRO_COMPLETED;
 }
 
-int gyro_udp_connect(gyro_udp_t *udp, const sockaddr *addr, const size_t addrlen) {
-    if (udp == nullptr || addr == nullptr || addrlen == 0)
+int gyro_udp_connect(gyro_udp_t *udp, const sockaddr *addr) {
+    if (udp == nullptr || addr == nullptr)
         return GYRO_EINVAL;
 
-    if (addr->sa_family != AF_INET && addr->sa_family != AF_INET6)
+    const auto addrlen = gyro::AddrLen(addr);
+    if (addrlen == 0)
         return GYRO_EINVAL;
 
     if (!gyro::IsActive(&udp->handle))
@@ -178,7 +182,7 @@ int gyro_udp_connect(gyro_udp_t *udp, const sockaddr *addr, const size_t addrlen
     if (status != GYRO_COMPLETED)
         return status;
 
-    if (connect(udp->handle.handle, addr, (socklen_t) addrlen) != 0)
+    if (connect(udp->handle.handle, addr, addrlen) != 0)
         return gyro::ErrorToStatus(errno);
 
     return GYRO_COMPLETED;
@@ -238,7 +242,7 @@ int gyro_udp_recv(gyro_udp_t *udp, gyro_buf_t *bufs, const unsigned int nbufs, s
     return GYRO_PENDING;
 }
 
-int gyro_udp_send(gyro_udp_t *udp, gyro_buf_t *bufs, const unsigned int nbufs, const sockaddr *to, const size_t tolen,
+int gyro_udp_send(gyro_udp_t *udp, gyro_buf_t *bufs, const unsigned int nbufs, const sockaddr *to,
                   const long long timeout, const gyro_rq_user_cb cb, void *data, gyro_request_t *token,
                   size_t *transferred) {
     if (token != nullptr)
@@ -250,16 +254,10 @@ int gyro_udp_send(gyro_udp_t *udp, gyro_buf_t *bufs, const unsigned int nbufs, c
     if (bufs == nullptr || nbufs == 0 || nbufs > IOV_MAX)
         return GYRO_EINVAL;
 
-    size_t addrlen = 0;
+    socklen_t addrlen = 0;
     if (to != nullptr) {
-        if (to->sa_family == AF_INET)
-            addrlen = sizeof(sockaddr_in);
-        else if (to->sa_family == AF_INET6)
-            addrlen = sizeof(sockaddr_in6);
-        else
-            return GYRO_EINVAL;
-
-        if (tolen < addrlen)
+        addrlen = gyro::AddrLen(to);
+        if (addrlen == 0)
             return GYRO_EINVAL;
     }
 

@@ -123,7 +123,7 @@ int main(void) {
     addr.sin_port = htons(80);
     inet_pton(AF_INET, "93.184.215.14", &addr.sin_addr);
 
-    int rc = gyro_tcp_connect(tcp, (struct sockaddr *) &addr, sizeof(addr), 5000, on_connect, NULL, NULL);
+    int rc = gyro_tcp_connect(tcp, (struct sockaddr *) &addr, 5000, on_connect, NULL, NULL);
     if (rc == GYRO_COMPLETED)
         on_connect(GYRO_HANDLE(tcp), GYRO_COMPLETED, 0, NULL);
     else if (rc < 0)

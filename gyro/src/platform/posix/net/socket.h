@@ -5,6 +5,7 @@
 #ifndef GYRO_PLATFORM_POSIX_NET_SOCKET_H_
 #define GYRO_PLATFORM_POSIX_NET_SOCKET_H_
 
+#include <netinet/in.h>
 #include <sys/socket.h>
 
 #include <gyro/platform.h>
@@ -51,6 +52,26 @@ namespace gyro {
 #else
     constexpr bool kAcceptedDescriptorReady = false;
 #endif
+
+    /**
+     * @brief Length of an IP address, read off its family.
+     *
+     * The public API takes addresses without a length, and this is why it can:
+     * the two families gyro accepts each have one fixed size, so the family
+     * already says how many bytes there are.
+     *
+     * @return The length, or 0 for a family gyro does not accept.
+     */
+    inline socklen_t AddrLen(const sockaddr *addr) {
+        switch (addr->sa_family) {
+            case AF_INET:
+                return sizeof(sockaddr_in);
+            case AF_INET6:
+                return sizeof(sockaddr_in6);
+            default:
+                return 0;
+        }
+    }
 
     /**
      * @brief Puts a descriptor into the state the loop needs it to be in.

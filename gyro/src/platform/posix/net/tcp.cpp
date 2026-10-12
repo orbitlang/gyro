@@ -282,11 +282,12 @@ int gyro_tcp_accept(gyro_tcp_t *tcp, gyro_tcp_t *client, const long long timeout
     return GYRO_PENDING;
 }
 
-int gyro_tcp_bind(gyro_tcp_t *tcp, const sockaddr *addr, const size_t addrlen, const unsigned int flags) {
-    if (tcp == nullptr || addr == nullptr || addrlen == 0)
+int gyro_tcp_bind(gyro_tcp_t *tcp, const sockaddr *addr, const unsigned int flags) {
+    if (tcp == nullptr || addr == nullptr)
         return GYRO_EINVAL;
 
-    if (addr->sa_family != AF_INET && addr->sa_family != AF_INET6)
+    const auto addrlen = gyro::AddrLen(addr);
+    if (addrlen == 0)
         return GYRO_EINVAL;
 
     if (!gyro::IsActive(&tcp->handle))
@@ -305,21 +306,22 @@ int gyro_tcp_bind(gyro_tcp_t *tcp, const sockaddr *addr, const size_t addrlen, c
             return gyro::ErrorToStatus(errno);
     }
 
-    if (bind(tcp->handle.handle, addr, (socklen_t) addrlen) < 0)
+    if (bind(tcp->handle.handle, addr, addrlen) < 0)
         return gyro::ErrorToStatus(errno);
 
     return GYRO_COMPLETED;
 }
 
-int gyro_tcp_connect(gyro_tcp_t *tcp, const sockaddr *addr, const size_t addrlen, const long long timeout,
+int gyro_tcp_connect(gyro_tcp_t *tcp, const sockaddr *addr, const long long timeout,
                      const gyro_rq_user_cb cb, void *data, gyro_request_t *out_token) {
     if (out_token != nullptr)
         *out_token = gyro_request_invalid();
 
-    if (tcp == nullptr || addr == nullptr || addrlen == 0)
+    if (tcp == nullptr || addr == nullptr)
         return GYRO_EINVAL;
 
-    if (addr->sa_family != AF_INET && addr->sa_family != AF_INET6)
+    const auto addrlen = gyro::AddrLen(addr);
+    if (addrlen == 0)
         return GYRO_EINVAL;
 
     if (!gyro::IsActive(&tcp->handle))
@@ -336,7 +338,7 @@ int gyro_tcp_connect(gyro_tcp_t *tcp, const sockaddr *addr, const size_t addrlen
     gyro::InlineGate gate((GyroHandle *) tcp, GYRO_DIR_OUT);
 
     do {
-        if (connect(tcp->handle.handle, addr, (socklen_t) addrlen) == 0)
+        if (connect(tcp->handle.handle, addr, addrlen) == 0)
             return GYRO_COMPLETED;
     } while (errno == EINTR);
 
