@@ -35,6 +35,7 @@
     XX(GYRO_EHOSTUNREACH, "host is unreachable")                            \
     XX(GYRO_ENETUNREACH, "network is unreachable")                          \
     XX(GYRO_EMSGSIZE, "message too long")                                   \
+    XX(GYRO_ENOTCONN, "socket is not connected")                            \
     XX(GYRO_EADDRINUSE, "address already in use")                           \
     XX(GYRO_EADDRNOTAVAIL, "address not available")                         \
     XX(GYRO_EMFILE, "too many open files")                                  \
@@ -69,6 +70,11 @@ int gyro::ErrorToStatus(const int error) {
         case WSAENETUNREACH:
         case WSAENETDOWN:
         case WSAENETRESET: return GYRO_ENETUNREACH;
+
+        // Two ways of saying the same thing: a stream that never connected,
+        // and a datagram with no destination on a socket with no peer.
+        case WSAENOTCONN:
+        case WSAEDESTADDRREQ: return GYRO_ENOTCONN;
 
         case WSAEADDRINUSE: return GYRO_EADDRINUSE;
         case WSAEMSGSIZE: return GYRO_EMSGSIZE;
@@ -111,6 +117,11 @@ int gyro::ErrorToStatus(const int error) {
         case ENETUNREACH:
         case ENETDOWN:
         case ENETRESET: return GYRO_ENETUNREACH;
+
+        // Two ways of saying the same thing: a stream that never connected,
+        // and a datagram with no destination on a socket with no peer.
+        case ENOTCONN:
+        case EDESTADDRREQ: return GYRO_ENOTCONN;
 
         case EADDRINUSE: return GYRO_EADDRINUSE;
         case EMSGSIZE: return GYRO_EMSGSIZE;

@@ -264,8 +264,8 @@ GYRO_API int gyro_udp_recv(gyro_udp_t *udp, gyro_buf_t *bufs, unsigned int nbufs
  *       which is the normal case, or a negative status such as GYRO_EMSGSIZE
  *       for a datagram larger than the path will carry, or GYRO_EINVAL for a
  *       handle with no descriptor yet, an unusable @p nbufs, or a @p to of
- *       another family. With @p to NULL on a socket that was never connected,
- *       the send fails: there is nowhere for it to go.
+ *       another family. GYRO_ENOTCONN when @p to is NULL on a socket that was
+ *       never connected: there is nowhere for the datagram to go.
  *
  * @note Thread-safe: the send may be carried out on the calling thread when
  *       nothing else is outstanding in that direction, and is otherwise handed

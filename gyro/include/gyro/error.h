@@ -52,6 +52,7 @@ typedef enum {
     GYRO_EHOSTUNREACH = -25,
     GYRO_ENETUNREACH = -26,
     GYRO_EMSGSIZE = -27, /* the datagram did not fit, and what did not fit is gone */
+    GYRO_ENOTCONN = -28, /* nobody to talk to: not connected, and no destination given */
 
     /* Resources and addresses */
     GYRO_EADDRINUSE = -30,
