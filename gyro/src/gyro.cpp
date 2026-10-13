@@ -295,14 +295,18 @@ void gyro::FinishRequest(Gyro *loop, GyroRequest *request) {
     if (loop->InHeap(request))
         loop->r_mheap.Remove(request);
 
+    // Read before the slot goes back, never after.
+    auto *handle = request->handle;
+    const auto direction = request->direction;
+
     loop->requests.Release(request);
 
     assert(loop->request_count > 0);
 
     loop->request_count -= 1;
 
-    if (request->handle != nullptr)
-        gyro_handle_try_end(request->handle, request->direction);
+    if (handle != nullptr)
+        gyro_handle_try_end(handle, direction);
 }
 
 void gyro::PostToLoop(Gyro *loop, GyroRequest *request) {
