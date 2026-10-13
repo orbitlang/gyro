@@ -19,10 +19,8 @@
 #include <gyro/buf.h>
 #include <gyro/export.h>
 #include <gyro/loop.h>
+#include <gyro/net.h>
 #include <gyro/request.h>
-
-/// Lets other sockets bind the same address, as SO_REUSEADDR does.
-#define GYRO_TCP_REUSEADDR 0x01
 
 /**
  * @file tcp.h
@@ -125,9 +123,12 @@ GYRO_API int gyro_tcp_accept(gyro_tcp_t *tcp, gyro_tcp_t *client, long long time
  *
  * @param addr Local address to take. Its family must be AF_INET or AF_INET6,
  *           and is what the descriptor is opened for when there is not one yet.
- * @param flags Zero, or GYRO_TCP_REUSEADDR.
+ * @param flags Zero, or GYRO_BIND_REUSEADDR. For TCP it is what lets a server
+ *            that has just stopped bind its port again at once, rather than
+ *            wait out the connections of its previous run that the kernel is
+ *            still winding down. It never lets two listeners share a port.
  * @return GYRO_COMPLETED, or a negative status: GYRO_EINVAL for an address of
- *       any other family.
+ *       any other family, or for a flag gyro does not know.
  *
  * @note Thread-safe, and synchronous wherever it is called: the answer is the
  *       kernel's and comes back at once. Binding a handle somebody else is

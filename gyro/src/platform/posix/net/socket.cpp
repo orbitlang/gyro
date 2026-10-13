@@ -17,6 +17,17 @@
 #include "error_internal.h"
 #include "socket.h"
 
+int gyro::ApplyBindFlags(const OSSocket socket, const unsigned int flags) {
+    if (flags & GYRO_BIND_REUSEADDR) {
+        constexpr int on = 1;
+
+        if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0)
+            return ErrorToStatus(errno);
+    }
+
+    return GYRO_COMPLETED;
+}
+
 int gyro::ConfigureSocket(const OSSocket socket, const bool descriptor_ready) {
     if (!descriptor_ready) {
         int flags = fcntl(socket, F_GETFL, 0);

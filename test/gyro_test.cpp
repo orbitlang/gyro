@@ -102,7 +102,7 @@ namespace {
             addr.sin_family = AF_INET;
             addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
-            ASSERT_EQ(gyro_tcp_bind(this->server, (sockaddr *) &addr, GYRO_TCP_REUSEADDR),
+            ASSERT_EQ(gyro_tcp_bind(this->server, (sockaddr *) &addr, GYRO_BIND_REUSEADDR),
                       GYRO_COMPLETED);
             ASSERT_EQ(gyro_tcp_listen(this->server, 16), GYRO_COMPLETED);
 

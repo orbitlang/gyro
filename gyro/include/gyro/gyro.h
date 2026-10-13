@@ -21,10 +21,11 @@
 #include <gyro/platform.h>
 #include <gyro/request.h>
 #include <gyro/timer.h>
-#include <gyro/udp.h>
 #include <gyro/version.h>
 
 // Network
+#include <gyro/net.h>
 #include <gyro/tcp.h>
+#include <gyro/udp.h>
 
 #endif // !GYRO_GYRO_H_

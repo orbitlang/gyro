@@ -126,7 +126,7 @@ namespace {
             addr.sin_family = AF_INET;
             addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
-            ASSERT_EQ(gyro_tcp_bind(this->server, (sockaddr *) &addr, GYRO_TCP_REUSEADDR),
+            ASSERT_EQ(gyro_tcp_bind(this->server, (sockaddr *) &addr, GYRO_BIND_REUSEADDR),
                       GYRO_COMPLETED);
             ASSERT_EQ(gyro_tcp_listen(this->server, 16), GYRO_COMPLETED);
 
@@ -1052,7 +1052,7 @@ namespace {
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
         addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        ASSERT_EQ(gyro_tcp_bind(early, (sockaddr *) &addr, GYRO_TCP_REUSEADDR), GYRO_COMPLETED);
+        ASSERT_EQ(gyro_tcp_bind(early, (sockaddr *) &addr, GYRO_BIND_REUSEADDR), GYRO_COMPLETED);
         EXPECT_EQ(gyro_tcp_fileno(early), first) << "bind replaced the descriptor that had just been configured";
 
         int got = 0;
@@ -1092,7 +1092,7 @@ namespace {
             addr.sin_family = AF_INET;
             addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
-            ASSERT_EQ(gyro_tcp_bind(server, (sockaddr *) &addr, GYRO_TCP_REUSEADDR), GYRO_COMPLETED);
+            ASSERT_EQ(gyro_tcp_bind(server, (sockaddr *) &addr, GYRO_BIND_REUSEADDR), GYRO_COMPLETED);
             ASSERT_EQ(gyro_tcp_listen(server, 16), GYRO_COMPLETED);
 
             // Opened on this thread, so readable from it too.

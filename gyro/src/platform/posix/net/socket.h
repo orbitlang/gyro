@@ -8,6 +8,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 
+#include <gyro/net.h>
 #include <gyro/platform.h>
 
 #include "handle_internal.h"
@@ -26,6 +27,15 @@
 #endif
 
 namespace gyro {
+    /**
+     * @brief Every flag a bind understands.
+     *
+     * A bit outside it is refused rather than ignored: a flag from a newer
+     * header, or a typo, would otherwise bind without the option the caller
+     * asked for and leave nothing to say so.
+     */
+    constexpr unsigned int kBindFlags = GYRO_BIND_REUSEADDR;
+
     /**
      * @brief Flags to ask socket() and accept4() for at creation time.
      *
@@ -54,24 +64,20 @@ namespace gyro {
 #endif
 
     /**
-     * @brief Length of an IP address, read off its family.
+     * @brief Sets on the descriptor the options the bind flags ask for.
      *
-     * The public API takes addresses without a length, and this is why it can:
-     * the two families gyro accepts each have one fixed size, so the family
-     * already says how many bytes there are.
+     * The same call for every protocol, because here each flag is one socket
+     * option and what it then does is the kernel's business, protocol by
+     * protocol. Windows is where that stops being true, SO_REUSEADDR there
+     * lets a socket take a port somebody else is using, so its backend is
+     * where the protocol has to be asked.
      *
-     * @return The length, or 0 for a family gyro does not accept.
+     * @param socket An open descriptor, not yet bound.
+     * @param flags Bits of kBindFlags, already validated by the caller, which
+     *            has to refuse the others before opening anything.
+     * @return GYRO_COMPLETED, or a negative status.
      */
-    inline socklen_t AddrLen(const sockaddr *addr) {
-        switch (addr->sa_family) {
-            case AF_INET:
-                return sizeof(sockaddr_in);
-            case AF_INET6:
-                return sizeof(sockaddr_in6);
-            default:
-                return 0;
-        }
-    }
+    int ApplyBindFlags(OSSocket socket, unsigned int flags);
 
     /**
      * @brief Puts a descriptor into the state the loop needs it to be in.
@@ -120,6 +126,26 @@ namespace gyro {
      *         without a descriptor rather than with a half-configured one.
      */
     int OpenSocket(GyroHandle *handle, int family, int type);
+
+    /**
+     * @brief Length of an IP address, read off its family.
+     *
+     * The public API takes addresses without a length, and this is why it can:
+     * the two families gyro accepts each have one fixed size, so the family
+     * already says how many bytes there are.
+     *
+     * @return The length, or 0 for a family gyro does not accept.
+     */
+    inline socklen_t AddrLen(const sockaddr *addr) {
+        switch (addr->sa_family) {
+            case AF_INET:
+                return sizeof(sockaddr_in);
+            case AF_INET6:
+                return sizeof(sockaddr_in6);
+            default:
+                return 0;
+        }
+    }
 } // namespace gyro
 
 #endif // !GYRO_PLATFORM_POSIX_NET_SOCKET_H_

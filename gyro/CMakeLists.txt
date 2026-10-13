@@ -8,6 +8,7 @@ set(GYRO_PUBLIC_HEADERS
         include/gyro/gyro.h
         include/gyro/handle.h
         include/gyro/loop.h
+        include/gyro/net.h
         include/gyro/os.h
         include/gyro/platform.h
         include/gyro/request.h

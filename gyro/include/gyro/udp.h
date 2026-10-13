@@ -19,10 +19,8 @@
 #include <gyro/buf.h>
 #include <gyro/export.h>
 #include <gyro/loop.h>
+#include <gyro/net.h>
 #include <gyro/request.h>
-
-/// Lets other sockets bind the same address, as SO_REUSEADDR does.
-#define GYRO_UDP_REUSEADDR 0x01
 
 /**
  * @file udp.h
@@ -115,9 +113,16 @@ typedef struct GyroUdp gyro_udp_t;
  *
  * @param addr Local address to take. Its family must be AF_INET or AF_INET6,
  *           and is what the descriptor is opened for when there is not one yet.
- * @param flags Zero, or GYRO_UDP_REUSEADDR.
+ * @param flags Zero, or GYRO_BIND_REUSEADDR. For UDP it lets several sockets
+ *            bind the same port, each having asked for it, and the systems
+ *            disagree on where that applies: Darwin and the BSDs honour it
+ *            for multicast addresses only, Linux for unicast ports as well,
+ *            with no promise about which socket a unicast datagram reaches.
+ *            The use it serves everywhere is several receivers of one
+ *            multicast group; sharing a unicast port portably takes
+ *            SO_REUSEPORT, set through gyro_udp_open() and gyro_udp_fileno().
  * @return GYRO_COMPLETED, or a negative status: GYRO_EINVAL for an address of
- *       any other family.
+ *       any other family, or for a flag gyro does not know.
  *
  * @note Thread-safe, and synchronous wherever it is called: the answer is the
  *       kernel's and comes back at once.

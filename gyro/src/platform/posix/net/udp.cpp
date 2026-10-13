@@ -140,7 +140,7 @@ static gyro_cb_status_t UDPSendOp(gyro_handle_t *handle, gyro_op_t *op) {
 
 extern "C" {
 int gyro_udp_bind(gyro_udp_t *udp, const sockaddr *addr, const unsigned int flags) {
-    if (udp == nullptr || addr == nullptr)
+    if (udp == nullptr || addr == nullptr || (flags & ~gyro::kBindFlags) != 0)
         return GYRO_EINVAL;
 
     const auto addrlen = gyro::AddrLen(addr);
@@ -150,16 +150,13 @@ int gyro_udp_bind(gyro_udp_t *udp, const sockaddr *addr, const unsigned int flag
     if (!gyro::IsActive(&udp->handle))
         return GYRO_EBADF;
 
-    const int status = gyro::OpenSocket(&udp->handle, addr->sa_family, SOCK_DGRAM);
+    int status = gyro::OpenSocket(&udp->handle, addr->sa_family, SOCK_DGRAM);
     if (status != GYRO_COMPLETED)
         return status;
 
-    if (flags & GYRO_UDP_REUSEADDR) {
-        constexpr int on = 1;
-
-        if (setsockopt(udp->handle.handle, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0)
-            return gyro::ErrorToStatus(errno);
-    }
+    status = gyro::ApplyBindFlags(udp->handle.handle, flags);
+    if (status != GYRO_COMPLETED)
+        return status;
 
     if (bind(udp->handle.handle, addr, addrlen) < 0)
         return gyro::ErrorToStatus(errno);

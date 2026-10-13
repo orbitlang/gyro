@@ -283,7 +283,7 @@ int gyro_tcp_accept(gyro_tcp_t *tcp, gyro_tcp_t *client, const long long timeout
 }
 
 int gyro_tcp_bind(gyro_tcp_t *tcp, const sockaddr *addr, const unsigned int flags) {
-    if (tcp == nullptr || addr == nullptr)
+    if (tcp == nullptr || addr == nullptr || (flags & ~gyro::kBindFlags) != 0)
         return GYRO_EINVAL;
 
     const auto addrlen = gyro::AddrLen(addr);
@@ -295,16 +295,13 @@ int gyro_tcp_bind(gyro_tcp_t *tcp, const sockaddr *addr, const unsigned int flag
 
     // Nothing here belongs to the loop: the descriptor is the handle's own,
     // and setting one up is ordered against using it by the caller, not by us.
-    const int status = gyro::OpenSocket(&tcp->handle, addr->sa_family, SOCK_STREAM);
+    int status = gyro::OpenSocket(&tcp->handle, addr->sa_family, SOCK_STREAM);
     if (status != GYRO_COMPLETED)
         return status;
 
-    if (flags & GYRO_TCP_REUSEADDR) {
-        constexpr int on = 1;
-
-        if (setsockopt(tcp->handle.handle, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0)
-            return gyro::ErrorToStatus(errno);
-    }
+    status = gyro::ApplyBindFlags(tcp->handle.handle, flags);
+    if (status != GYRO_COMPLETED)
+        return status;
 
     if (bind(tcp->handle.handle, addr, addrlen) < 0)
         return gyro::ErrorToStatus(errno);
