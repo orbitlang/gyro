@@ -18,10 +18,15 @@
 #include "socket.h"
 
 int gyro::ApplyBindFlags(const OSSocket socket, const unsigned int flags) {
-    if (flags & GYRO_BIND_REUSEADDR) {
-        constexpr int on = 1;
+    constexpr int on = 1;
 
+    if (flags & GYRO_BIND_REUSEADDR) {
         if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0)
+            return ErrorToStatus(errno);
+    }
+
+    if (flags & GYRO_BIND_IPV6ONLY) {
+        if (setsockopt(socket, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on)) < 0)
             return ErrorToStatus(errno);
     }
 
@@ -72,5 +77,11 @@ int gyro::OpenSocket(GyroHandle *handle, const int family, const int type) {
 
     return GYRO_COMPLETED;
 }
+
+extern "C" {
+int gyro_bind_flags_supported(const unsigned int flags) {
+    return (flags & ~gyro::kBindFlags) == 0;
+}
+} // extern "C"
 
 #endif

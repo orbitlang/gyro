@@ -121,8 +121,12 @@ typedef struct GyroUdp gyro_udp_t;
  *            The use it serves everywhere is several receivers of one
  *            multicast group; sharing a unicast port portably takes
  *            SO_REUSEPORT, set through gyro_udp_open() and gyro_udp_fileno().
+ *            GYRO_BIND_IPV6ONLY may be added for an IPv6 address, to keep the
+ *            socket from also receiving IPv4 datagrams; see net.h for why the
+ *            default cannot be relied on.
  * @return GYRO_COMPLETED, or a negative status: GYRO_EINVAL for an address of
- *       any other family, or for a flag gyro does not know.
+ *       any other family, for a flag gyro does not know, or for
+ *       GYRO_BIND_IPV6ONLY on an IPv4 address.
  *
  * @note Thread-safe, and synchronous wherever it is called: the answer is the
  *       kernel's and comes back at once.
@@ -166,8 +170,9 @@ GYRO_API int gyro_udp_connect(gyro_udp_t *udp, const struct sockaddr *addr);
  * @brief Opens the descriptor without doing anything with it yet.
  *
  * The moment the options a kernel only honours before a socket is bound need:
- * joining a multicast group, SO_REUSEPORT, SO_BROADCAST, buffer sizes,
- * IPV6_V6ONLY. Set them through gyro_udp_fileno(), then bind or send as usual.
+ * joining a multicast group, SO_REUSEPORT, SO_BROADCAST, buffer sizes
+ * (IPV6_V6ONLY is GYRO_BIND_IPV6ONLY). Set them through gyro_udp_fileno(), then
+ * bind or send as usual.
  *
  * Idempotent. A handle that already has a descriptor is left exactly as it is.
  *

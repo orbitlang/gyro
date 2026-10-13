@@ -283,19 +283,23 @@ int gyro_tcp_accept(gyro_tcp_t *tcp, gyro_tcp_t *client, const long long timeout
 }
 
 int gyro_tcp_bind(gyro_tcp_t *tcp, const sockaddr *addr, const unsigned int flags) {
-    if (tcp == nullptr || addr == nullptr || (flags & ~gyro::kBindFlags) != 0)
+    if (tcp == nullptr || addr == nullptr)
         return GYRO_EINVAL;
 
     const auto addrlen = gyro::AddrLen(addr);
     if (addrlen == 0)
         return GYRO_EINVAL;
 
+    int status = gyro::CheckBindFlags(addr, flags);
+    if (status != GYRO_COMPLETED)
+        return status;
+
     if (!gyro::IsActive(&tcp->handle))
         return GYRO_EBADF;
 
     // Nothing here belongs to the loop: the descriptor is the handle's own,
     // and setting one up is ordered against using it by the caller, not by us.
-    int status = gyro::OpenSocket(&tcp->handle, addr->sa_family, SOCK_STREAM);
+    status = gyro::OpenSocket(&tcp->handle, addr->sa_family, SOCK_STREAM);
     if (status != GYRO_COMPLETED)
         return status;
 

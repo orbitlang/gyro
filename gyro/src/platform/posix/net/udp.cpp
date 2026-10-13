@@ -140,17 +140,21 @@ static gyro_cb_status_t UDPSendOp(gyro_handle_t *handle, gyro_op_t *op) {
 
 extern "C" {
 int gyro_udp_bind(gyro_udp_t *udp, const sockaddr *addr, const unsigned int flags) {
-    if (udp == nullptr || addr == nullptr || (flags & ~gyro::kBindFlags) != 0)
+    if (udp == nullptr || addr == nullptr)
         return GYRO_EINVAL;
 
     const auto addrlen = gyro::AddrLen(addr);
     if (addrlen == 0)
         return GYRO_EINVAL;
 
+    int status = gyro::CheckBindFlags(addr, flags);
+    if (status != GYRO_COMPLETED)
+        return status;
+
     if (!gyro::IsActive(&udp->handle))
         return GYRO_EBADF;
 
-    int status = gyro::OpenSocket(&udp->handle, addr->sa_family, SOCK_DGRAM);
+    status = gyro::OpenSocket(&udp->handle, addr->sa_family, SOCK_DGRAM);
     if (status != GYRO_COMPLETED)
         return status;
 

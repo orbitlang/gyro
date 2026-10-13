@@ -8,6 +8,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 
+#include <gyro/error.h>
 #include <gyro/net.h>
 #include <gyro/platform.h>
 
@@ -34,7 +35,7 @@ namespace gyro {
      * header, or a typo, would otherwise bind without the option the caller
      * asked for and leave nothing to say so.
      */
-    constexpr unsigned int kBindFlags = GYRO_BIND_REUSEADDR;
+    constexpr unsigned int kBindFlags = GYRO_BIND_REUSEADDR | GYRO_BIND_IPV6ONLY;
 
     /**
      * @brief Flags to ask socket() and accept4() for at creation time.
@@ -73,11 +74,31 @@ namespace gyro {
      * where the protocol has to be asked.
      *
      * @param socket An open descriptor, not yet bound.
-     * @param flags Bits of kBindFlags, already validated by the caller, which
-     *            has to refuse the others before opening anything.
+     * @param flags Bits of kBindFlags, already through CheckBindFlags(),
+     *            which has to run before anything is opened.
      * @return GYRO_COMPLETED, or a negative status.
      */
     int ApplyBindFlags(OSSocket socket, unsigned int flags);
+
+    /**
+     * @brief Refuses bind flags that cannot apply, before anything is opened.
+     *
+     * Unknown bits, and GYRO_BIND_IPV6ONLY on an address that is not IPv6.
+     * Run ahead of OpenSocket() so that a refused bind leaves the handle
+     * exactly as it found it, rather than with a descriptor nobody asked for.
+     *
+     * @param addr The address being bound, its family already validated.
+     * @return GYRO_COMPLETED, or GYRO_EINVAL.
+     */
+    inline int CheckBindFlags(const sockaddr *addr, const unsigned int flags) {
+        if ((flags & ~kBindFlags) != 0)
+            return GYRO_EINVAL;
+
+        if ((flags & GYRO_BIND_IPV6ONLY) && addr->sa_family != AF_INET6)
+            return GYRO_EINVAL;
+
+        return GYRO_COMPLETED;
+    }
 
     /**
      * @brief Puts a descriptor into the state the loop needs it to be in.

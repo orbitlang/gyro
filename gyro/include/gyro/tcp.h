@@ -127,8 +127,12 @@ GYRO_API int gyro_tcp_accept(gyro_tcp_t *tcp, gyro_tcp_t *client, long long time
  *            that has just stopped bind its port again at once, rather than
  *            wait out the connections of its previous run that the kernel is
  *            still winding down. It never lets two listeners share a port.
+ *            GYRO_BIND_IPV6ONLY may be added for an IPv6 address, to keep the
+ *            listener from also taking IPv4 connections; see net.h for why
+ *            the default cannot be relied on.
  * @return GYRO_COMPLETED, or a negative status: GYRO_EINVAL for an address of
- *       any other family, or for a flag gyro does not know.
+ *       any other family, for a flag gyro does not know, or for
+ *       GYRO_BIND_IPV6ONLY on an IPv4 address.
  *
  * @note Thread-safe, and synchronous wherever it is called: the answer is the
  *       kernel's and comes back at once. Binding a handle somebody else is
@@ -182,8 +186,9 @@ GYRO_API int gyro_tcp_listen(const gyro_tcp_t *tcp, int backlog);
  * family from the address they are given, which leaves no moment in between
  * to configure it. This is that moment, for the options a kernel only honours
  * on a socket that is not yet bound or connected: binding to an interface,
- * IPV6_V6ONLY, buffer sizes, anything gyro has no call of its own for. Set
- * them through gyro_tcp_fileno(), then bind or connect as usual.
+ * buffer sizes, anything gyro has no call or flag of its own for (IPV6_V6ONLY
+ * is GYRO_BIND_IPV6ONLY). Set them through gyro_tcp_fileno(), then bind or
+ * connect as usual.
  *
  * Idempotent. A handle that already has a descriptor, from an earlier call or
  * from having been accepted, is left exactly as it is.
