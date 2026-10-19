@@ -93,6 +93,7 @@ GYRO_API int gyro_handle_close(gyro_handle_t *handle, gyro_close_cb cb);
  * looking busy for good, and that handle silently loses its fast path for the
  * rest of its life.
  *
+ * @param handle Handle the operation is for.
  * @param direction Which of the handle's two streams the operation belongs to.
  * @return Non-zero when the caller owns the direction and may attempt the
  *       syscall itself. Zero means the claim was still taken, and the

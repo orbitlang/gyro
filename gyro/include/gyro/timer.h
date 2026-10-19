@@ -52,6 +52,7 @@ extern "C" {
  * For a first delay that differs from the period, see
  * gyro_timer_start_periodic().
  *
+ * @param gyro Loop the timer belongs to, and fires on.
  * @param timeout Milliseconds from now. 0 means the next turn, which is how
  *              work is handed to the loop's thread without waiting for
  *              anything. Note the difference from the I/O operations, where
@@ -93,6 +94,7 @@ GYRO_API int gyro_timer_start(gyro_t *gyro, long long timeout, gyro_rq_user_cb c
  * that wants the first firing after one period is gyro_timer_start() with the
  * period as its timeout.
  *
+ * @param gyro Loop the timer belongs to, and fires on.
  * @param first Milliseconds before the first firing. 0 means the next turn.
  * @param period Milliseconds between firings after the first. Must be
  *             positive: a period of 0 would have the loop fire the timer on

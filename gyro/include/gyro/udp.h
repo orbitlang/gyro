@@ -111,6 +111,7 @@ typedef struct GyroUdp gyro_udp_t;
  * Opens the descriptor if it does not exist yet: the address is what tells gyro
  * which family to open it for.
  *
+ * @param udp Handle to bind.
  * @param addr Local address to take. Its family must be AF_INET or AF_INET6,
  *           and is what the descriptor is opened for when there is not one yet.
  * @param flags Zero, or GYRO_BIND_REUSEADDR. For UDP it lets several sockets
@@ -156,6 +157,7 @@ GYRO_API int gyro_udp_bind(gyro_udp_t *udp, const struct sockaddr *addr, unsigne
  * would mean two things depending on where it ran. A caller who needs it, and
  * is willing to own that, can reach the socket through gyro_udp_fileno().
  *
+ * @param udp Handle to connect.
  * @param addr Peer to talk to. Only read for the duration of the call, since
  *           the kernel is given it before this returns and nothing is queued.
  *           Its family must be AF_INET or AF_INET6.
@@ -176,6 +178,7 @@ GYRO_API int gyro_udp_connect(gyro_udp_t *udp, const struct sockaddr *addr);
  *
  * Idempotent. A handle that already has a descriptor is left exactly as it is.
  *
+ * @param udp Handle to open the descriptor for.
  * @param family Address family, AF_INET or AF_INET6. Binding or connecting an
  *             address of another family afterwards is refused by the OS rather
  *             than by gyro.
@@ -202,6 +205,7 @@ GYRO_API int gyro_udp_open(gyro_udp_t *udp, int family);
  * Receives on one handle are served in the order they were submitted, so a
  * second receive takes the datagram behind the first one's.
  *
+ * @param udp Socket to receive on.
  * @param bufs Regions to fill, in order. They and the array naming them must
  *           stay valid, and unmodified, until the operation reports.
  * @param nbufs How many regions there are: at least one, and no more than the
@@ -218,6 +222,7 @@ GYRO_API int gyro_udp_open(gyro_udp_t *udp, int family);
  *              from the GYRO_ECANCELED of a cancellation somebody asked for.
  * @param cb Reports the outcome. Not called when GYRO_COMPLETED is returned.
  *         On GYRO_EMSGSIZE its `transferred` is the bytes that did fit.
+ * @param data Passed back to @p cb untouched.
  * @param token Receives the token naming the operation, or NULL. Set to an
  *            invalid token unless GYRO_PENDING is returned.
  * @param transferred Receives the byte count when a datagram was already
@@ -252,6 +257,7 @@ GYRO_API int gyro_udp_recv(gyro_udp_t *udp, gyro_buf_t *bufs, unsigned int nbufs
  *
  * Sends on one handle leave in the order they were submitted.
  *
+ * @param udp Socket to send from.
  * @param bufs Regions to send, in order. They and the array naming them must
  *           stay valid, and unmodified, until the operation reports.
  * @param nbufs How many regions there are: at least one, and no more than the
@@ -266,6 +272,7 @@ GYRO_API int gyro_udp_recv(gyro_udp_t *udp, gyro_buf_t *bufs, unsigned int nbufs
  *              Rarely of use: a send waits only for room in the socket's own
  *              buffer, never for the network.
  * @param cb Reports the outcome. Not called when GYRO_COMPLETED is returned.
+ * @param data Passed back to @p cb untouched.
  * @param token Receives the token naming the operation, or NULL. Set to an
  *            invalid token unless GYRO_PENDING is returned.
  * @param transferred Receives the byte count when the datagram went out at

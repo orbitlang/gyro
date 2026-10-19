@@ -48,6 +48,15 @@
         "CMAKE_CXX_FLAGS": "-fsanitize=thread -fno-omit-frame-pointer -g",
         "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=thread"
       }
+    },
+    {
+      "name": "docs",
+      "displayName": "API reference (Doxygen)",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "GYRO_BUILD_DOCS": "ON",
+        "GYRO_BUILD_TESTS": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -66,6 +75,11 @@
     {
       "name": "tsan",
       "configurePreset": "tsan"
+    },
+    {
+      "name": "docs",
+      "configurePreset": "docs",
+      "targets": ["gyro_docs"]
     }
   ],
   "testPresets": [

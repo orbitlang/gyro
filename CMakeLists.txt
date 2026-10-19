@@ -11,6 +11,7 @@ option(GYRO_BUILD_TESTS "Build the gyro test suite" ${PROJECT_IS_TOP_LEVEL})
 option(GYRO_BUILD_SHARED "Build gyro as a shared library" OFF)
 option(GYRO_INSTALL "Generate the gyro install target" ${PROJECT_IS_TOP_LEVEL})
 option(GYRO_WERROR "Treat compiler warnings as errors" OFF)
+option(GYRO_BUILD_DOCS "Generate the API reference with Doxygen (target gyro_docs)" OFF)
 
 if (PROJECT_IS_TOP_LEVEL)
     set(CMAKE_CXX_STANDARD 17)
@@ -35,6 +36,10 @@ if (PROJECT_IS_TOP_LEVEL)
 endif ()
 
 add_subdirectory(gyro)
+
+if (GYRO_BUILD_DOCS)
+    include(GyroDocs)
+endif ()
 
 if (GYRO_BUILD_TESTS)
     enable_testing()

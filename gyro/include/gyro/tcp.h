@@ -99,11 +99,16 @@ typedef struct GyroTcp gyro_tcp_t;
  * @p client must stay alive until the operation reports, exactly as a buffer
  * would.
  *
+ * @param tcp A socket listening for connections: bound, then
+ *          gyro_tcp_listen().
+ * @param client Where the connection lands: a handle from gyro_tcp_new() with
+ *             no descriptor yet. Anything else is refused with GYRO_EINVAL.
  * @param timeout Milliseconds to wait for a connection, or 0 to wait
  *              indefinitely. A deadline that arrives reports
  *              GYRO_ETIMEDOUT, which is how it is told apart from a
  *              cancellation somebody asked for.
  * @param cb Reports the outcome. Its `transferred` is always 0.
+ * @param data Passed back to @p cb untouched.
  * @param out_token Receives the token naming the operation, or NULL.
  * @return GYRO_PENDING, GYRO_COMPLETED if a connection was already waiting, or
  *       a negative status.
@@ -121,6 +126,7 @@ GYRO_API int gyro_tcp_accept(gyro_tcp_t *tcp, gyro_tcp_t *client, long long time
  * Opens the descriptor if it does not exist yet: the address is what tells gyro
  * which family to open it for.
  *
+ * @param tcp Handle to bind.
  * @param addr Local address to take. Its family must be AF_INET or AF_INET6,
  *           and is what the descriptor is opened for when there is not one yet.
  * @param flags Zero, or GYRO_BIND_REUSEADDR. For TCP it is what lets a server
@@ -147,6 +153,7 @@ GYRO_API int gyro_tcp_bind(gyro_tcp_t *tcp, const struct sockaddr *addr, unsigne
  * handle straight from gyro_tcp_new() has no socket, and the address is what
  * says which family to open it for.
  *
+ * @param tcp Handle to connect.
  * @param addr Peer to reach. Only read for the duration of the call. Its
  *           family must be AF_INET or AF_INET6.
  * @param timeout Milliseconds to wait, or 0 to wait as long as the OS does.
@@ -155,6 +162,7 @@ GYRO_API int gyro_tcp_bind(gyro_tcp_t *tcp, const struct sockaddr *addr, unsigne
  *              block, not about the network. A deadline that arrives reports
  *              GYRO_ETIMEDOUT.
  * @param cb Reports the outcome. Its `transferred` is always 0.
+ * @param data Passed back to @p cb untouched.
  * @param out_token Receives the token naming the operation, or NULL. Set to an
  *                invalid token unless GYRO_PENDING is returned.
  * @return GYRO_PENDING, GYRO_COMPLETED when the connection was established at
@@ -172,6 +180,7 @@ GYRO_API int gyro_tcp_connect(gyro_tcp_t *tcp, const struct sockaddr *addr, long
  * Only marks the socket as listening; connections are taken one at a time with
  * gyro_tcp_accept(). Synchronous, because the kernel answers at once.
  *
+ * @param tcp Handle already bound.
  * @param backlog How many connections the kernel may hold before refusing more.
  * @return GYRO_COMPLETED, or a negative status.
  *
@@ -193,6 +202,7 @@ GYRO_API int gyro_tcp_listen(const gyro_tcp_t *tcp, int backlog);
  * Idempotent. A handle that already has a descriptor, from an earlier call or
  * from having been accepted, is left exactly as it is.
  *
+ * @param tcp Handle to open the descriptor for.
  * @param family Address family, AF_INET or AF_INET6. Binding or connecting an
  *             address of another family afterwards is refused by the OS
  *             rather than by gyro.
@@ -223,12 +233,17 @@ GYRO_API int gyro_tcp_open(gyro_tcp_t *tcp, int family);
  * is an application-level race, and which of them gets the earlier bytes is
  * undefined.
  *
+ * @param tcp Connection to read from.
  * @param bufs Regions to fill, in order. They and the array naming them must
  *           stay valid, and unmodified, until the operation reports.
+ * @param nbufs How many regions there are, at least one. Past what the
+ *            system takes in a single call (IOV_MAX on POSIX) only the first
+ *            ones are offered, which a read, being short anyway, does not mind.
  * @param timeout Milliseconds before the read is given up on, or 0 for none.
  *              A deadline that arrives reports GYRO_ETIMEDOUT, distinct from
  *              the GYRO_ECANCELED of a cancellation somebody asked for.
  * @param cb Reports the outcome. Not called when GYRO_COMPLETED is returned.
+ * @param data Passed back to @p cb untouched.
  * @param token Receives the token naming the operation, or NULL. Set to an
  *            invalid token unless GYRO_PENDING is returned.
  * @param transferred Receives the byte count when the read is satisfied at
@@ -259,14 +274,19 @@ GYRO_API int gyro_tcp_read(gyro_tcp_t *tcp, gyro_buf_t *bufs, unsigned int nbufs
  * kernel only accepts in part can come out with the other thread's bytes in
  * the middle of it. Anything that cares has to serialise its own writers.
  *
+ * @param tcp Connection to write to.
  * @param bufs Regions to send, in order. They and the array naming them must
  *           stay valid, and unmodified, until the operation reports, gyro
  *           hands them to the kernel rather than copying them, and leaves the
  *           array exactly as it found it.
+ * @param nbufs How many regions there are, at least one. Any number will do:
+ *            past what the system takes in a single call (IOV_MAX on POSIX)
+ *            the rest goes in the syscalls that follow, like any remainder.
  * @param timeout Milliseconds before the write is given up on, or 0 for none.
  *              A write that times out has usually sent something already, and
  *              reports GYRO_ETIMEDOUT along with how much.
  * @param cb Reports the outcome. Not called when GYRO_COMPLETED is returned.
+ * @param data Passed back to @p cb untouched.
  * @param token Receives the token naming the operation, or NULL. Set to an
  *            invalid token unless GYRO_PENDING is returned.
  * @param transferred Receives the byte count when everything went out in one

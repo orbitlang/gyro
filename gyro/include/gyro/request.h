@@ -123,13 +123,21 @@ GYRO_API int gyro_request_cancel(gyro_t *gyro, gyro_request_t token);
  * itself. So a caller hands the claim over here and never touches it again,
  * whatever the outcome.
  *
+ * @param handle Handle the operation runs on. A closing one is refused with
+ *             GYRO_EBADF.
  * @param data Passed back to @p cb_user untouched.
+ * @param cb_op Carries the operation out once the handle is ready, as
+ *            described above. Must not be NULL.
+ * @param cb_user Receives the outcome when gyro_op_complete() reports it. May
+ *              be NULL when nobody needs to hear it.
  * @param out_token Receives the token naming the operation. May be NULL when
  *                the caller will never cancel it.
  * @param timeout Milliseconds before the operation is given up on, or 0 to
  *              let it wait indefinitely. A deadline that arrives reports
  *              GYRO_ETIMEDOUT; a cancellation somebody asked for reports
  *              GYRO_ECANCELED, even when the operation also had a deadline.
+ * @param direction Which of the handle's two streams the operation joins, and
+ *                the one whose claim the caller holds.
  * @return GYRO_PENDING once the loop owns the operation, or a negative status,
  *       in which case no callback will fire.
  *

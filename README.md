@@ -197,6 +197,16 @@ ctest --preset debug
 Other presets: `release`, `asan` (AddressSanitizer and UndefinedBehaviorSanitizer)
 and `tsan` (ThreadSanitizer).
 
+The API reference is generated from the public headers with
+[Doxygen](https://www.doxygen.nl/), which has to be installed:
+
+```sh
+cmake --preset docs
+cmake --build --preset docs
+```
+
+The pages land in `build/docs/api/html/index.html`.
+
 Without presets:
 
 ```sh
@@ -212,6 +222,7 @@ Options:
 | `GYRO_BUILD_SHARED` | `OFF` | Build a shared library instead of a static one |
 | `GYRO_INSTALL` | `ON` when top-level | Generate the install target and CMake package |
 | `GYRO_WERROR` | `OFF` | Treat warnings as errors |
+| `GYRO_BUILD_DOCS` | `OFF` | Add the `gyro_docs` target, which generates the API reference with Doxygen |
 
 ## Using gyro in your project
 
