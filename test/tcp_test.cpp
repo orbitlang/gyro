@@ -289,58 +289,80 @@ namespace {
         EXPECT_EQ(gyro_handle_pending(GYRO_HANDLE(this->client), GYRO_DIR_OUT), 0u);
     }
 
-    TEST_F(TcpTest, CancellingOverlapsWithAnotherThreadTakingSlotsFromTheStore) {
+    /// Reports that ended any other way than by their deadline.
+    std::atomic<int> untimely{0};
+
+    gyro_cb_status_t CountTimeout(gyro_handle_t *handle, const int status, const size_t transferred, void *data) {
+        if (status != GYRO_ETIMEDOUT)
+            untimely.fetch_add(1);
+
+        return Count(handle, status, transferred, data);
+    }
+
+    TEST_F(TcpTest, ResolvingTokensOverlapsWithOtherThreadsGrowingTheStore) {
         constexpr int kThreads = 4;
         constexpr int kEach = 64;
         constexpr int kTotal = kThreads * kEach;
         constexpr long long kDeadline = 50;
 
         tally.Reset();
+        untimely.store(0);
+
+        // A token that is valid in form and stale in fact: its slot exists,
+        // its generation has moved on. Cancelling it takes the whole path, a
+        // slot out of the store for the note, the note handed to the loop, and
+        // Resolve() on the loop's thread walking the page directory to find
+        // that the generation no longer matches. An invalid token would stop
+        // at the first check and touch nothing.
+        char probe;
+        gyro_buf_t probebuf{&probe, 1};
+        Report expired;
+        gyro_request_t stale;
+
+        ASSERT_EQ(gyro_tcp_read(this->conn, &probebuf, 1, 1, Done, &expired, &stale, nullptr), GYRO_PENDING);
+        RunFor(1);
+        ASSERT_EQ(expired.status, GYRO_ETIMEDOUT);
+        ASSERT_TRUE(GYRO_REQUEST_IS_VALID(stale));
 
         char storage[kTotal] = {};
         std::vector<gyro_buf_t> bufs(kTotal);
         for (int i = 0; i < kTotal; i++)
             bufs[i] = gyro_buf_t{&storage[i], 1};
 
-        std::atomic<int> running{kThreads};
-
+        // Each thread alternates a read, which takes a slot and grows the store
+        // when it runs dry, with a cancel of the stale token, which the loop
+        // resolves. The loop is running the whole time, so the directory is
+        // read on its thread while the submits enlarge it on theirs: the
+        // overlap is there by construction, and a thread sanitiser is what
+        // judges it. Nothing below depends on how the threads interleave.
         std::vector<std::thread> threads;
         for (int i = 0; i < kThreads; i++) {
             threads.emplace_back([&, i] {
                 for (int j = 0; j < kEach; j++) {
-                    // Nobody is writing, so each of these takes a slot out of
-                    // the store and waits for its deadline.
+                    // Nobody is writing, so each read waits for its deadline.
                     EXPECT_EQ(gyro_tcp_read(this->conn, &bufs[i * kEach + j], 1, kDeadline,
-                                            Count, nullptr, nullptr, nullptr),
+                                            CountTimeout, nullptr, nullptr, nullptr),
                               GYRO_PENDING);
-                }
 
-                running.fetch_sub(1);
+                    EXPECT_EQ(gyro_request_cancel(this->loop, stale), GYRO_COMPLETED);
+                }
             });
         }
 
-        // Resolving a token walks the store's page directory, which the submits
-        // above are growing from their own threads. Cancelling is the loop
-        // thread's alone, and this is it: gyro_run() is not running, but the id
-        // it recorded is still this one.
-        const gyro_request_t stale = gyro_request_invalid();
-
-        int cancels = 0;
-        while (running.load() > 0) {
-            gyro_request_cancel(this->loop, stale);
-            cancels++;
-        }
+        // gyro_run() comes back whenever it runs out of work, which it may
+        // well do before the threads have submitted anything, so it is simply
+        // called again until every read has reported.
+        while (tally.calls.load() < kTotal)
+            gyro_run(this->loop);
 
         for (auto &thread: threads)
             thread.join();
 
-        EXPECT_GT(cancels, 0) << "the submits finished before a single cancel got in";
-
-        // Their deadlines are what ends them, so one turn is enough.
-        while (tally.calls.load() < kTotal)
-            gyro_run(this->loop);
+        // Cancels posted after the last read reported are still on their way.
+        EXPECT_EQ(gyro_run(this->loop), GYRO_COMPLETED);
 
         EXPECT_EQ(tally.calls.load(), kTotal);
+        EXPECT_EQ(untimely.load(), 0) << "a stale token cancelled a read that took its slot";
         EXPECT_EQ(gyro_handle_pending(GYRO_HANDLE(this->conn), GYRO_DIR_IN), 0u);
     }
 

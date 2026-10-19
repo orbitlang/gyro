@@ -151,20 +151,21 @@ about what is there today.
 | Requests, tokens, cancellation from any thread | ✅ Working |
 | Handles, close from any thread, ordered teardown | ✅ Working |
 | TCP: bind, listen, accept, connect, read, write | ✅ Working |
+| UDP: bind, connect, send, receive, scatter/gather datagrams | ✅ Working |
 | Timers: one-shot and periodic | ✅ Working |
 | Synchronous fast path from any thread | ✅ Working |
 | `kqueue` backend (macOS, BSD) | ✅ Working |
 | `epoll` backend (Linux) | ✅ Working |
 | I/O completion ports backend (Windows) | 🚧 Next. The API is shaped for it; the backend is not written |
-| UDP, pipes, regular files | ❌ Planned |
+| Pipes, regular files | ❌ Planned |
 | Name resolution | ❌ Planned, needs the thread pool |
 | Thread pool for blocking work | ❌ Planned |
 | Extension API for custom handle types | ❌ Designed, not started |
 | API and ABI stability | ❌ Not yet. Signatures may still change before 1.0 |
 
-The test suite currently runs 84 cases, including multi-threaded ones that
+The test suite currently runs 119 cases, including multi-threaded ones that
 overlap submits, cancellations and closes with a running loop. It is run
-under ThreadSanitizer on Linux as part of the routine.
+under ThreadSanitizer as part of the routine.
 
 ### Platform support
 
@@ -193,11 +194,8 @@ cmake --build build/debug
 ctest --preset debug
 ```
 
-Other presets: `release`, `asan` (AddressSanitizer and UndefinedBehaviorSanitizer),
-`tsan` (ThreadSanitizer), and `tsan-clang` for a ThreadSanitizer build that
-forces `clang++`. 
-
-> Sanitizer builds are known not to start on recent macOS releases; run them on an x86_64 Linux host.
+Other presets: `release`, `asan` (AddressSanitizer and UndefinedBehaviorSanitizer)
+and `tsan` (ThreadSanitizer).
 
 Without presets:
 
@@ -244,10 +242,15 @@ headers and in the design notes; these are the ones that bite.
 - **Buffers stay valid and unmodified until the callback fires.** gyro hands
   them to the kernel rather than copying them, and so does the array of
   descriptors naming them. A moving garbage collector has to pin them.
+- **Addresses you give are read in the call; addresses you ask for are
+  written later.** A bind, a connect or the destination of a send may live on
+  the stack. The address a receive fills in with the sender is written when
+  the datagram arrives, so it follows the rule for buffers. Addresses carry no
+  length: their family says it.
 - **Thread-safe**: submitting an operation, cancelling one, closing a handle,
-  arming a timer, stopping the loop. **Loop-affine**: running the loop,
-  binding, listening, connecting, and inspecting a handle. Every entry point
-  says which it is in its documentation.
+  arming a timer, stopping the loop, and setting a socket up (opening,
+  binding, listening, connecting). **Loop-affine**: running the loop and
+  freeing it. Every entry point says which it is in its documentation.
 - **You own handles until their close callback runs.** gyro frees them then
   and never before. There is no "close everything": whoever embeds gyro keeps
   track of what it opened.
@@ -268,8 +271,8 @@ headers and in the design notes; these are the ones that bite.
 
 Gyro is young and help is welcome, whether that is a bug report, a platform
 you can test on, a review of the design notes, or code. The Windows backend
-is the largest piece of open work and the one most in need of hands; UDP,
-pipes and the thread pool follow.
+is the largest piece of open work and the one most in need of hands; pipes
+and the thread pool follow.
 
 Open an issue to discuss anything that changes the API or the model before
 writing it. For everything else, a pull request with a test is the best
